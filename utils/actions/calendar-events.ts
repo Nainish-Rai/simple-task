@@ -14,13 +14,24 @@ export async function getCalendarEvents(
   start: Date,
   end: Date
 ): Promise<CalendarEventType[]> {
-  const { userId } = auth();
+  const { userId } = await auth();
+  console.log("userId", userId);
   if (!userId) throw new Error("Unauthorized");
+
+  // First get the user's MongoDB ID
+  const user = await prisma.user.findUnique({
+    where: { user_id: userId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
 
   // Get local events
   const localEvents = await prisma.calendarEvent.findMany({
     where: {
-      userId,
+      userId: user.id,
       startTime: {
         gte: start,
       },
@@ -41,22 +52,36 @@ export async function getCalendarEvents(
     const googleCalendar = await getGoogleCalendarService();
     const googleEvents = await googleCalendar.listEvents(start, end);
 
-    // Convert Google events to our format
-    const convertedGoogleEvents: GoogleCalendarEvent[] =
-      googleEvents?.map((event) => ({
-        id: event.id!,
-        title: event.summary || "Untitled Event",
-        description: event.description || null,
-        location: event.location || null,
-        startTime: new Date(event.start?.dateTime || event.start?.date!),
-        endTime: new Date(event.end?.dateTime || event.end?.date!),
-        isAllDay: Boolean(event.start?.date),
-        status: event.status || "confirmed",
-        externalIds: {
-          googleEventId: event.id!,
-          outlookEventId: null,
-        },
-      })) || [];
+    // Convert Google events to our format with defensive checks
+    const convertedGoogleEvents: GoogleCalendarEvent[] = [];
+
+    if (Array.isArray(googleEvents)) {
+      for (const event of googleEvents) {
+        if (!event?.id || !event?.start) continue; // Skip invalid events
+
+        const startDateTime = event.start.dateTime || event.start.date;
+        const endDateTime = event.end?.dateTime || event.end?.date;
+
+        if (!startDateTime || !endDateTime) continue; // Skip events without valid dates
+
+        convertedGoogleEvents.push({
+          id: event.id,
+          title: event.summary || "Untitled Event",
+          description: event.description || null,
+          location: event.location || null,
+          startTime: new Date(startDateTime),
+          endTime: new Date(endDateTime),
+          isAllDay: Boolean(event.start.date),
+          status: event.status || "confirmed",
+          externalIds: {
+            googleEventId: event.id,
+            outlookEventId: null,
+          },
+        });
+      }
+    }
+
+    console.log(convertedGoogleEvents);
 
     // Return combined events
     return [...localEvents, ...convertedGoogleEvents];
@@ -68,7 +93,7 @@ export async function getCalendarEvents(
 }
 
 export async function createCalendarEvent(data: EventFormData) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
   // Convert form data to calendar event data
@@ -83,6 +108,16 @@ export async function createCalendarEvent(data: EventFormData) {
     endTime.setHours(parseInt(endHours), parseInt(endMinutes));
   }
 
+  // Get MongoDB user ID
+  const user = await prisma.user.findUnique({
+    where: { user_id: userId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
   const eventData = {
     title: data.title,
     description: data.description || null,
@@ -90,7 +125,7 @@ export async function createCalendarEvent(data: EventFormData) {
     startTime,
     endTime,
     isAllDay: data.isAllDay,
-    userId,
+    userId: user.id,
     status: "confirmed",
     externalIds: null,
     attendees: [],
@@ -145,14 +180,24 @@ export async function updateCalendarEvent(
   eventId: string,
   data: EventFormData
 ) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
+
+  // Get MongoDB user ID
+  const user = await prisma.user.findUnique({
+    where: { user_id: userId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
 
   // Verify the event belongs to the user
   const existingEvent = await prisma.calendarEvent.findFirst({
     where: {
       id: eventId,
-      userId,
+      userId: user.id,
     },
     include: {
       reminders: true,
@@ -182,7 +227,7 @@ export async function updateCalendarEvent(
     startTime,
     endTime,
     isAllDay: data.isAllDay,
-    userId,
+    userId: user.id,
     status: existingEvent.status,
     externalIds: existingEvent.externalIds,
     attendees: existingEvent.attendees,
@@ -226,14 +271,24 @@ export async function updateCalendarEvent(
 }
 
 export async function deleteCalendarEvent(eventId: string) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
+
+  // Get MongoDB user ID
+  const user = await prisma.user.findUnique({
+    where: { user_id: userId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
 
   // Verify the event belongs to the user
   const existingEvent = await prisma.calendarEvent.findFirst({
     where: {
       id: eventId,
-      userId,
+      userId: user.id,
     },
     include: {
       reminders: true,

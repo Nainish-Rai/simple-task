@@ -28,7 +28,7 @@ export class GoogleCalendarService {
         orderBy: "startTime",
       });
 
-      return response.data.items;
+      return response.data.items || [];
     } catch (error) {
       console.error("Error fetching Google Calendar events:", error);
       throw error;
@@ -117,12 +117,22 @@ export class GoogleCalendarService {
 
 // Helper to get Google Calendar service instance
 export async function getGoogleCalendarService() {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
+
+  // First get the MongoDB user ID
+  const user = await prisma.user.findUnique({
+    where: { user_id: userId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
 
   const calendarAccount = await prisma.calendarAccount.findFirst({
     where: {
-      userId,
+      userId: user.id,
       provider: "google",
       isPrimary: true,
     },

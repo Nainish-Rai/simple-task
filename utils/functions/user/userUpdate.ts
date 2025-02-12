@@ -1,5 +1,12 @@
 import { PrismaClient } from "@prisma/client";
-import { userUpdateProps } from "@/utils/types";
+
+interface userUpdateProps {
+  email: string;
+  first_name: string;
+  last_name: string;
+  profile_image_url: string;
+  user_id: string;
+}
 
 const prisma = new PrismaClient();
 

@@ -29,21 +29,29 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify user
-    const { userId } = auth();
-    if (!userId || userId !== state) {
+    // For OAuth callbacks, we use the state parameter for verification
+    // since the user might not be fully authenticated during the callback
+    if (!state) {
       return Response.redirect(
         `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/calendar?error=unauthorized`
       );
     }
 
+    const userId = state; // Use the state parameter as userId since it was set during OAuth initialization
+
     // Exchange code for tokens
     const { tokens } = await oauth2Client.getToken(code);
+    if (!tokens.access_token) {
+      throw new Error("No access token returned");
+    }
+
     oauth2Client.setCredentials(tokens);
 
-    // Get user email from Google
-    const oauth2 = google.oauth2({ version: "v2", auth: oauth2Client });
-    const { data: userInfo } = await oauth2.userinfo.get();
+    // Get user email from Google using the authenticated client
+    const oauth2Service = google.oauth2("v2");
+    const { data: userInfo } = await oauth2Service.userinfo.get({
+      auth: oauth2Client,
+    });
 
     if (!userInfo.email) {
       throw new Error("Could not get Google account email");

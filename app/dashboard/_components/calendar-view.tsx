@@ -277,6 +277,13 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
         .fc-highlight {
           background-color: hsl(var(--accent) / 0.2) !important;
         }
+
+        .fc-daygrid-day-number {
+        }
+        .fc-col-header-cell-cushion,
+        .fc-daygrid-more-link {
+          color: hsl(var(--background));
+        }
       `}</style>
     </Card>
   );

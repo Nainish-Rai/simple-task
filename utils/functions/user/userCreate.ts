@@ -1,5 +1,12 @@
 import { PrismaClient } from "@prisma/client";
-import { userCreateProps } from "@/utils/types";
+
+interface userCreateProps {
+  email: string;
+  first_name: string;
+  last_name: string;
+  profile_image_url: string;
+  user_id: string;
+}
 
 const prisma = new PrismaClient();
 

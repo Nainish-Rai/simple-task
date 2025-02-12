@@ -3,6 +3,7 @@ import { CalendarView } from "./_components/calendar-view";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { GoogleCalendarConnect } from "./_components/google-calendar-connect";
 
 export default async function Dashboard() {
   return (
@@ -26,12 +27,13 @@ export default async function Dashboard() {
           <p className="text-sm text-muted-foreground">
             No calendars connected
           </p>
-          <Button size="sm" variant="outline" className="mt-4" asChild>
-            <Link href="/dashboard/calendar">
+          {/* <Button size="sm" variant="outline" className="mt-4" asChild>
+
               <Plus className="h-4 w-4 mr-2" />
               Connect Calendar
-            </Link>
-          </Button>
+
+          </Button> */}
+          <GoogleCalendarConnect />
         </Card>
       </div>
 
@@ -44,7 +46,7 @@ export default async function Dashboard() {
               <Link href="/dashboard/calendar">View Full Calendar</Link>
             </Button>
           </div>
-          <CalendarView />
+          <CalendarView events={[]} />
         </Card>
       </div>
     </div>

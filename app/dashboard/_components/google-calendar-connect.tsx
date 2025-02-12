@@ -13,6 +13,7 @@ export function GoogleCalendarConnect() {
       setIsConnecting(true);
       const response = await fetch("/api/auth/google-calendar");
       const data = await response.json();
+      console.log(data, "calendar data");
 
       if (data.url) {
         window.location.href = data.url;

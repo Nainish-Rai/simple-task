@@ -18,7 +18,9 @@ const SCOPES = [
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = auth();
+    // Clerk auth automatically handles headers internally
+    const { userId } = await auth();
+
     if (!userId) {
       return new Response("Unauthorized", { status: 401 });
     }

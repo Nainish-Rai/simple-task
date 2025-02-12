@@ -9,7 +9,7 @@ import { CalendarEventType } from "@/utils/types";
 
 export default async function CalendarPage() {
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
     if (!userId) {
       throw new Error("Authentication required");
     }
