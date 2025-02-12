@@ -1,5 +1,5 @@
 {
-  "name": "nextjs-starter",
+  "name": "simple-tasks",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -52,6 +52,8 @@
     "html-react-parser": "^5.1.12",
     "lucide-react": "^0.436.0",
     "mini-svg-data-uri": "^1.4.4",
+    "mongodb": "^6.13.0",
+    "mongoose": "^8.10.0",
     "next": "latest",
     "next-themes": "^0.3.0",
     "prisma": "^5.9.1",

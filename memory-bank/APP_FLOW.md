@@ -71,7 +71,22 @@ This application integrates multiple features, including calendar synchronizatio
   - Global state management with React Context or state management libraries.
   - Local state managed in individual components using React hooks.
 
-### 3.2. API Integration Flow
+### 3.2. Data Flow & Database Interactions
+
+- **MongoDB Integration**:
+  - Connection managed through MongoDB utility in `lib/mongodb.ts`.
+  - Prisma ORM handles database operations with type safety.
+- **Data Models**:
+  - User data and preferences stored in MongoDB collections.
+  - Relationships managed through Prisma schema definitions.
+- **CRUD Operations**:
+  - API routes interface with MongoDB through Prisma client.
+  - Real-time data updates synchronized with frontend state.
+- **Data Validation**:
+  - Schema validation enforced at database level.
+  - Additional TypeScript interfaces ensure type safety.
+
+### 3.3. API Integration Flow
 
 - **OAuth Integration**:
   - OAuth setup with NextAuth.js handles user sessions and token management.
@@ -81,7 +96,7 @@ This application integrates multiple features, including calendar synchronizatio
 - **AI Scheduling Service**:
   - Integration with an AI service (OpenAI API or a local model) to process scheduling suggestions.
 
-### 3.3. UI and Animation Flow
+### 3.4. UI and Animation Flow
 
 - **UI Guidelines**:
   - Components styled with Tailwind CSS and shadcn/ui as per the frontend guidelines.
@@ -96,6 +111,7 @@ This application integrates multiple features, including calendar synchronizatio
 
 - **User Journey Diagram**: Visual diagram mapping user flow from landing page to calendar interaction.
 - **Component Interaction Diagram**: Diagram showing how authentication, calendar APIs, and UI components interact.
+- **Data Flow Diagram**: Illustrates the flow of data between frontend, API routes, and MongoDB.
 
 _Note: Diagrams can be created using tools like Figma or Lucidchart and linked here._
 
@@ -107,6 +123,10 @@ _Note: Diagrams can be created using tools like Figma or Lucidchart and linked h
 - **User Feedback**: Incorporate feedback loops for iterative improvements.
 - **Performance Monitoring**: Monitor flow and performance metrics during beta testing to ensure seamless UX.
 - **Documentation**: Update this document as new features are integrated or flows change.
+- **Database Optimization**:
+  - Monitor MongoDB query performance
+  - Implement database indexing strategies
+  - Set up data backup and recovery procedures
 
 ---
 

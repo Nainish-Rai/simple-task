@@ -3,13 +3,12 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "mongodb"
+  url      = env("MONGODB_URI")
 }
 
 model user {
-  id                Int      @id @default(autoincrement())
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
   created_time      DateTime @default(now())
   email             String   @unique
   first_name        String?
@@ -18,16 +17,17 @@ model user {
   profile_image_url String?
   user_id           String   @unique
   subscription      String?
-  bookmarks    bookmark[]
-  notes        note[]
-  todos        todo[]
-  weatherPrefs weatherPreference[]
-  aiChats      aiChat[]
+  bookmarks         bookmark[]
+  notes             note[]
+  todos             todo[]
+  weatherPrefs      weatherPreference[]
+  aiChats          aiChat[]
 }
+
 model bookmark {
-  id        BigInt   @id @default(autoincrement())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   user      user     @relation(fields: [userId], references: [id])
-  userId    Int
+  userId    String   @db.ObjectId
   title     String
   url       String
   category  String?
@@ -35,9 +35,9 @@ model bookmark {
 }
 
 model note {
-  id        BigInt   @id @default(autoincrement())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   user      user     @relation(fields: [userId], references: [id])
-  userId    Int
+  userId    String   @db.ObjectId
   title     String?
   content   String
   tags      String[]
@@ -45,9 +45,9 @@ model note {
 }
 
 model todo {
-  id        BigInt   @id @default(autoincrement())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   user      user     @relation(fields: [userId], references: [id])
-  userId    Int
+  userId    String   @db.ObjectId
   task      String
   dueDate   DateTime?
   priority  String?
@@ -56,17 +56,17 @@ model todo {
 }
 
 model weatherPreference {
-  id        BigInt   @id @default(autoincrement())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   user      user     @relation(fields: [userId], references: [id])
-  userId    Int
+  userId    String   @db.ObjectId
   location  String
   units     String   @default("metric")
 }
 
 model aiChat {
-  id        BigInt   @id @default(autoincrement())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   user      user     @relation(fields: [userId], references: [id])
-  userId    Int
+  userId    String   @db.ObjectId
   message   String
   response  String?
   createdAt DateTime @default(now())

@@ -1,87 +1,44 @@
-# Getting Started
+# SimpleTask Application
 
-## Prerequisites
-- Node.js and yarn/bun installed
-- Accounts and API keys for:
-  - Supabase
-  - Stripe (if using payments)
-  - Clerk (if using authentication)
+## MongoDB Setup
 
-## Setup
+1. Create a MongoDB Atlas account or use a local MongoDB installation
+2. Get your MongoDB connection string
+3. Create a `.env` file in the root directory and add your MongoDB URI:
 
-1. Clone the repository:
-   ```
-   git clone <repository-url>
-   cd <project-directory>
-   ```
+```bash
+MONGODB_URI=your_mongodb_connection_string
+```
 
-2. Install dependencies:
-   ```
-   yarn
-   ```
+4. Run the following commands to initialize the database:
 
-3. Set up environment variables:
-   Create a `.env` file in the root directory with the following variables:
-   ```
-   SUPABASE_URL=<your-supabase-project-url>
-   SUPABASE_SERVICE_KEY=<your-supabase-service-key>
+```bash
+npx prisma generate
+npx prisma db push
+```
 
-   # If using Stripe
-   STRIPE_SECRET_KEY=<your-stripe-secret-key>
-   NEXT_PUBLIC_STRIPE_PRICE_ID=<your-stripe-price-id>
+## Development
 
-   # If using Clerk
-   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<your-clerk-publishable-key>
-   CLERK_SECRET_KEY=<your-clerk-secret-key>
-   NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
-   NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-   NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/
-   NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/
-   ```
+```bash
+npm run dev
+```
 
-4. Configure features:
-   In `config.ts`, set the desired features:
-   ```typescript
-   const config = {
-     auth: {
-       enabled: true, // Set to false if not using Clerk
-     },
-     payments: {
-       enabled: true, // Set to false if not using Stripe
-     }
-   };
-   ```
+The application will be available at `http://localhost:3000`
 
-5. Set up the database:
-   Run Prisma migrations:
-   ```
-   npx prisma migrate dev
-   ```
+## API Testing
 
-6. Start the development server:
-   ```
-   yarn dev
-   ```
+Test the MongoDB connection using the following endpoints:
 
-7. Open your browser and navigate to `http://localhost:3000` to see your application running.
+- GET `/api/users` - Retrieve all users
+- POST `/api/users` - Create a new user
 
-## Additional Configuration
+Example POST request:
 
-- Webhooks: Set up webhooks for Clerk (if using auth) at `/api/auth/webhook` and for Stripe (if using payments) at `/api/payments/webhook`.
-- Customize the landing page, dashboard, and other components as needed.
-- Modify the Prisma schema in `prisma/schema.prisma` if you need to change the database structure.
-
-## Important Security Notes
-
-- Enable Row Level Security (RLS) in your Supabase project to ensure data protection at the database level.
-- Always make Supabase calls on the server-side (in API routes or server components) to keep your service key secure.
-
-## Learn More
-
-Refer to the documentation of the individual technologies used in this project for more detailed information:
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
-- [Supabase Documentation](https://supabase.io/docs)
-- [Prisma Documentation](https://www.prisma.io/docs)
-- [Clerk Documentation](https://clerk.dev/docs) (if using auth)
-- [Stripe Documentation](https://stripe.com/docs) (if using payments)
+```json
+{
+  "email": "user@example.com",
+  "first_name": "John",
+  "last_name": "Doe",
+  "user_id": "user123"
+}
+```
