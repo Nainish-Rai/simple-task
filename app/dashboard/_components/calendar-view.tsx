@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -28,6 +28,8 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
   const [view, setView] = useState<
     "dayGridMonth" | "timeGridWeek" | "timeGridDay"
   >("dayGridMonth");
+
+  const calendarRef = useRef<FullCalendar | null>(null);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
@@ -130,36 +132,32 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
       <div className="flex justify-between items-center mb-4">
         <div className="flex gap-2">
           <Button
-            variant="outline"
+            variant={view === "dayGridMonth" ? "default" : "outline"}
             size="sm"
-            onClick={() => setView("dayGridMonth")}
-            className={
-              view === "dayGridMonth"
-                ? "bg-primary text-primary-foreground"
-                : ""
-            }
+            onClick={() => {
+              calendarRef.current?.getApi().changeView("dayGridMonth");
+              setView("dayGridMonth");
+            }}
           >
             Month
           </Button>
           <Button
-            variant="outline"
+            variant={view === "timeGridWeek" ? "default" : "outline"}
             size="sm"
-            onClick={() => setView("timeGridWeek")}
-            className={
-              view === "timeGridWeek"
-                ? "bg-primary text-primary-foreground"
-                : ""
-            }
+            onClick={() => {
+              calendarRef.current?.getApi().changeView("timeGridWeek");
+              setView("timeGridWeek");
+            }}
           >
             Week
           </Button>
           <Button
-            variant="outline"
+            variant={view === "timeGridDay" ? "default" : "outline"}
             size="sm"
-            onClick={() => setView("timeGridDay")}
-            className={
-              view === "timeGridDay" ? "bg-primary text-primary-foreground" : ""
-            }
+            onClick={() => {
+              calendarRef.current?.getApi().changeView("timeGridDay");
+              setView("timeGridDay");
+            }}
           >
             Day
           </Button>
@@ -174,6 +172,7 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView={view}
+          ref={calendarRef}
           headerToolbar={false} // We're using our custom header
           events={calendarEvents}
           editable={true}
@@ -193,23 +192,43 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
               slotMaxTime: "22:00:00",
             },
           }}
+          // Add this prop to handle view changes
+          datesSet={(dateInfo) => {
+            setView(
+              dateInfo.view.type as
+                | "dayGridMonth"
+                | "timeGridWeek"
+                | "timeGridDay"
+            );
+          }}
           eventContent={(eventInfo) => {
             const source = eventInfo.event.extendedProps.source;
+            // Generate a consistent pastel color based on the event title
+            const getColor = (str: string) => {
+              let hash = 0;
+              for (let i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+              }
+              // Generate pastel HSL color
+              const h = hash % 360;
+              return `hsl(${h}, 70%, 80%)`;
+            };
+            const bgColor = getColor(eventInfo.event.title);
             return {
               html: `
-                <div class="fc-event-main-frame">
-                  <div class="fc-event-title-container">
-                    <div class="fc-event-title fc-sticky">
-                      ${eventInfo.event.title}
-                      ${
-                        source === "google"
-                          ? ' <span style="font-size: 0.75rem;">📅</span>'
-                          : ""
-                      }
+                  <div class="fc-event-main-frame" style="background-color: ${bgColor}; border-color: ${bgColor}">
+                    <div class="fc-event-title-container">
+                      <div class="fc-event-title fc-sticky" style="color: hsl(var(--foreground))">
+                        ${eventInfo.event.title}
+                        ${
+                          source === "google"
+                            ? ' <span style="font-size: 0.75rem;">📅</span>'
+                            : ""
+                        }
+                      </div>
                     </div>
                   </div>
-                </div>
-              `,
+                `,
             };
           }}
         />
@@ -244,9 +263,10 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
           --fc-button-hover-border-color: hsl(var(--primary) / 0.9);
           --fc-button-active-bg-color: hsl(var(--primary) / 0.8);
           --fc-button-active-border-color: hsl(var(--primary) / 0.8);
-          --fc-event-bg-color: hsl(var(--primary));
-          --fc-event-border-color: hsl(var(--primary));
           --fc-today-bg-color: hsl(var(--accent) / 0.1);
+          --fc-page-bg-color: hsl(var(--background));
+          --fc-neutral-bg-color: hsl(var(--background));
+          --fc-list-event-hover-bg-color: hsl(var(--accent) / 0.1);
         }
 
         .fc {
@@ -262,13 +282,21 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
 
         .fc td {
           border-color: hsl(var(--border));
+          background-color: hsl(var(--background));
         }
 
         .fc-event {
           border-radius: var(--radius);
           padding: 2px 4px;
           font-size: 0.875rem;
-          color: hsl(var(--background));
+          border-width: 1px;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+          transition: transform 0.1s ease;
+        }
+
+        .fc-event:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
         }
 
         .fc-day-today {
@@ -277,6 +305,53 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
 
         .fc-highlight {
           background-color: hsl(var(--accent) / 0.2) !important;
+        }
+
+        .fc-daygrid-day-number,
+        .fc-col-header-cell-cushion {
+          color: hsl(var(--foreground));
+        }
+
+        /* Time grid specific styles */
+        .fc-timegrid-slot-label {
+          color: hsl(var(--foreground) / 0.8);
+          font-size: 0.875rem;
+        }
+
+        .fc-timegrid-axis {
+          border-color: hsl(var(--border));
+        }
+
+        .fc-timegrid-slot {
+          height: 3rem !important;
+        }
+
+        .fc-timegrid-event {
+          border-radius: var(--radius);
+          margin: 1px;
+        }
+
+        /* Week view specific */
+        .fc-timeGridWeek-view .fc-col-header-cell {
+          padding: 0.5rem;
+        }
+
+        /* Day view specific */
+        .fc-timeGridDay-view .fc-col-header-cell {
+          padding: 0.75rem;
+        }
+
+        /* General improvements */
+        .fc-scrollgrid {
+          border-radius: var(--radius);
+        }
+
+        .fc-scrollgrid-section > td {
+          border-color: hsl(var(--border));
+        }
+
+        .fc-view {
+          background: hsl(var(--background));
         }
       `}</style>
     </Card>
