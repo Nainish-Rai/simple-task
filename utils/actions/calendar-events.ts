@@ -9,6 +9,7 @@ import {
   GoogleCalendarEvent,
 } from "../types";
 import { getGoogleCalendarService } from "../services/google-calendar";
+import { calendar_v3 } from "googleapis";
 
 export async function getCalendarEvents(
   start: Date,
@@ -17,10 +18,17 @@ export async function getCalendarEvents(
   const { userId } = auth();
   if (!userId) throw new Error("Unauthorized");
 
-  // Get local events
+  // First get the user's MongoDB ID
+  const user = await prisma.user.findUnique({
+    where: { user_id: userId },
+  });
+
+  if (!user) throw new Error("User not found");
+
+  // Get local events using the MongoDB user ID
   const localEvents = await prisma.calendarEvent.findMany({
     where: {
-      userId,
+      userId: user.id,
       startTime: {
         gte: start,
       },
@@ -42,8 +50,8 @@ export async function getCalendarEvents(
     const googleEvents = await googleCalendar.listEvents(start, end);
 
     // Convert Google events to our format
-    const convertedGoogleEvents: GoogleCalendarEvent[] =
-      googleEvents?.map((event) => ({
+    const convertedGoogleEvents: GoogleCalendarEvent[] = googleEvents.map(
+      (event: calendar_v3.Schema$Event) => ({
         id: event.id!,
         title: event.summary || "Untitled Event",
         description: event.description || null,
@@ -56,7 +64,8 @@ export async function getCalendarEvents(
           googleEventId: event.id!,
           outlookEventId: null,
         },
-      })) || [];
+      })
+    );
 
     // Return combined events
     return [...localEvents, ...convertedGoogleEvents];
@@ -70,6 +79,13 @@ export async function getCalendarEvents(
 export async function createCalendarEvent(data: EventFormData) {
   const { userId } = auth();
   if (!userId) throw new Error("Unauthorized");
+
+  // Get the user's MongoDB ID
+  const user = await prisma.user.findUnique({
+    where: { user_id: userId },
+  });
+
+  if (!user) throw new Error("User not found");
 
   // Convert form data to calendar event data
   const startTime = new Date(data.startDate);
@@ -90,7 +106,7 @@ export async function createCalendarEvent(data: EventFormData) {
     startTime,
     endTime,
     isAllDay: data.isAllDay,
-    userId,
+    userId: user.id,
     status: "confirmed",
     externalIds: null,
     attendees: [],
@@ -113,26 +129,28 @@ export async function createCalendarEvent(data: EventFormData) {
     const googleCalendar = await getGoogleCalendarService();
     const googleEvent = await googleCalendar.createEvent({
       title: data.title,
-      description: data.description,
-      location: data.location,
+      description: data.description || null,
+      location: data.location || null,
       startTime,
       endTime,
       isAllDay: data.isAllDay,
     });
 
-    // Update local event with Google Calendar ID
-    await prisma.calendarEvent.update({
-      where: { id: localEvent.id },
-      data: {
-        externalIds: {
-          googleEventId: googleEvent.id,
-          outlookEventId: null,
+    if (googleEvent && googleEvent.id) {
+      // Update local event with Google Calendar ID
+      await prisma.calendarEvent.update({
+        where: { id: localEvent.id },
+        data: {
+          externalIds: {
+            googleEventId: googleEvent.id,
+            outlookEventId: null,
+          },
         },
-      },
-      include: {
-        reminders: true,
-      },
-    });
+        include: {
+          reminders: true,
+        },
+      });
+    }
   } catch (error) {
     console.error("Failed to create Google Calendar event:", error);
     // Continue with local event only if Google Calendar sync fails
@@ -148,11 +166,18 @@ export async function updateCalendarEvent(
   const { userId } = auth();
   if (!userId) throw new Error("Unauthorized");
 
+  // Get the user's MongoDB ID
+  const user = await prisma.user.findUnique({
+    where: { user_id: userId },
+  });
+
+  if (!user) throw new Error("User not found");
+
   // Verify the event belongs to the user
   const existingEvent = await prisma.calendarEvent.findFirst({
     where: {
       id: eventId,
-      userId,
+      userId: user.id,
     },
     include: {
       reminders: true,
@@ -182,7 +207,7 @@ export async function updateCalendarEvent(
     startTime,
     endTime,
     isAllDay: data.isAllDay,
-    userId,
+    userId: user.id,
     status: existingEvent.status,
     externalIds: existingEvent.externalIds,
     attendees: existingEvent.attendees,
@@ -209,8 +234,8 @@ export async function updateCalendarEvent(
         existingEvent.externalIds.googleEventId,
         {
           title: data.title,
-          description: data.description,
-          location: data.location,
+          description: data.description || null,
+          location: data.location || null,
           startTime,
           endTime,
           isAllDay: data.isAllDay,
@@ -229,11 +254,18 @@ export async function deleteCalendarEvent(eventId: string) {
   const { userId } = auth();
   if (!userId) throw new Error("Unauthorized");
 
+  // Get the user's MongoDB ID
+  const user = await prisma.user.findUnique({
+    where: { user_id: userId },
+  });
+
+  if (!user) throw new Error("User not found");
+
   // Verify the event belongs to the user
   const existingEvent = await prisma.calendarEvent.findFirst({
     where: {
       id: eventId,
-      userId,
+      userId: user.id,
     },
     include: {
       reminders: true,
