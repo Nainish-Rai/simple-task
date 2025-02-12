@@ -1,6 +1,7 @@
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
+import { PrismaClient } from "@prisma/client";
 import { userCreateProps } from "@/utils/types";
+
+const prisma = new PrismaClient();
 
 export const userCreate = async ({
   email,
@@ -9,37 +10,21 @@ export const userCreate = async ({
   profile_image_url,
   user_id,
 }: userCreateProps) => {
-  const cookieStore = cookies();
-
-  const supabase = createServerClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-      },
-    }
-  );
-
   try {
-    const { data, error } = await supabase
-      .from("user")
-      .insert([
-        {
-          email,
-          first_name,
-          last_name,
-          profile_image_url,
-          user_id,
-        },
-      ])
-      .select();
+    const user = await prisma.user.create({
+      data: {
+        email,
+        first_name,
+        last_name,
+        profile_image_url,
+        user_id,
+      },
+    });
 
-    if (error?.code) return error;
-    return data;
+    return user;
   } catch (error: any) {
     throw new Error(error.message);
+  } finally {
+    await prisma.$disconnect();
   }
 };
