@@ -1,47 +1,36 @@
 import { z } from "zod";
 
-export type userCreateProps = z.infer<typeof userCreateSchema>;
-
-const userCreateSchema = z.object({
-  email: z.string().email({ message: "Invalid email" }).describe("user email"),
-  first_name: z
-    .string()
-    .regex(/^[a-zA-Z]+$/, { message: "First name must only contain letters" })
-    .min(3, { message: "First name is required" })
-    .describe("user first name"),
-  last_name: z
-    .string()
-    .regex(/^[a-zA-Z]+$/, { message: "Last name must only contain letters" })
-    .min(3, { message: "Last name is required" })
-    .describe("user last name"),
-  profile_image_url: z
-    .string()
-    .url({ message: "Invalid URL" })
-    .optional()
-    .describe("user profile image URL"),
-  user_id: z.string().describe("user ID"),
+export const CalendarEventSchema = z.object({
+  id: z.string().optional(), // Optional for new events
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional(),
+  location: z.string().optional(),
+  startTime: z.date(),
+  endTime: z.date(),
+  isAllDay: z.boolean().default(false),
+  isRecurring: z.boolean().default(false),
+  recurringPattern: z.string().optional(),
+  userId: z.string(),
+  calendarId: z.string().optional(),
+  status: z.enum(["confirmed", "tentative", "cancelled"]).default("confirmed"),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional(),
 });
 
-export type userUpdateProps = z.infer<typeof userUpdateSchema>;
+export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
 
-const userUpdateSchema = z.object({
-  email: z
-    .string()
-    .email({ message: "Invalid email" })
-    .nonempty({ message: "Email is required" })
-    .describe("user email"),
-  first_name: z
-    .string()
-    .regex(/^[a-zA-Z]+$/, { message: "First name must only contain letters" })
-    .describe("user first name"),
-  last_name: z
-    .string()
-    .regex(/^[a-zA-Z]+$/, { message: "Last name must only contain letters" })
-    .describe("user last name"),
-  profile_image_url: z
-    .string()
-    .url({ message: "Invalid URL" })
-    .optional()
-    .describe("user profile image URL"),
-  user_id: z.string().describe("user ID"),
+export type CalendarView = "dayGridMonth" | "timeGridWeek" | "timeGridDay";
+
+export const EventFormSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional(),
+  location: z.string().optional(),
+  startDate: z.date(),
+  endDate: z.date(),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+  isAllDay: z.boolean().default(false),
+  isRecurring: z.boolean().default(false),
 });
+
+export type EventFormData = z.infer<typeof EventFormSchema>;

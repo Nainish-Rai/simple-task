@@ -1,17 +1,16 @@
 "use client";
 
-import React, { useState } from "react"; // Import useState
+import React, { useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import clsx from "clsx";
 import {
   Banknote,
+  Calendar,
   Folder,
   HomeIcon,
   Settings,
-  ChevronRightCircle,
-  ChevronRight,
   ChevronLeft,
-} from "lucide-react"; // Import ChevronRightCircle for toggle icon
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -28,6 +27,11 @@ const navItems: NavItem[] = [
     icon: HomeIcon,
   },
   {
+    label: "Calendar",
+    href: "/dashboard/calendar",
+    icon: Calendar,
+  },
+  {
     label: "Projects",
     href: "/dashboard/projects",
     icon: Folder,
@@ -38,6 +42,7 @@ const navItems: NavItem[] = [
     icon: Banknote,
   },
 ];
+
 const secondaryNavItems: NavItem[] = [
   {
     label: "Settings",
@@ -50,7 +55,7 @@ export default function DashboardSideBar() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
 
-  const toggleSidebar = () => setCollapsed(!collapsed); // Toggle function
+  const toggleSidebar = () => setCollapsed(!collapsed);
 
   return (
     <div
