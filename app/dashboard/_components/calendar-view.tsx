@@ -45,26 +45,36 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
+  // Helper function to get calendar name
+  const getCalendarName = (event: CalendarEventType): string => {
+    if ("externalIds" in event && event.externalIds?.calendarName) {
+      return event.externalIds.calendarName;
+    }
+    return "Local Calendar";
+  };
+
   // Transform events to FullCalendar format
-  const calendarEvents = events.map((event) => ({
-    id: event.id,
-    title: event.title,
-    start: event.startTime,
-    end: event.endTime,
-    allDay: event.isAllDay,
-    extendedProps: {
-      description: event.description,
-      location: event.location,
-      status: event.status,
-      // Add source information for different handling
-      source:
-        "externalIds" in event && event.externalIds?.googleEventId
-          ? "google"
-          : "local",
-      googleEventId:
-        "externalIds" in event ? event.externalIds?.googleEventId : null,
-    },
-  }));
+  const calendarEvents = events.map((event) => {
+    const isGoogleEvent =
+      "externalIds" in event && event.externalIds?.googleEventId;
+    return {
+      id: event.id,
+      title: event.title,
+      start: event.startTime,
+      end: event.endTime,
+      allDay: event.isAllDay,
+      extendedProps: {
+        description: event.description,
+        location: event.location,
+        status: event.status,
+        source: isGoogleEvent ? "google" : "local",
+        googleEventId: isGoogleEvent ? event.externalIds?.googleEventId : null,
+        calendarName: isGoogleEvent
+          ? event.externalIds?.calendarName
+          : "Local Calendar",
+      },
+    };
+  });
 
   const handleDateSelect = (selectInfo: DateSelectArg) => {
     setSelectedDates({
@@ -203,7 +213,10 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
           }}
           eventContent={(eventInfo) => {
             const source = eventInfo.event.extendedProps.source;
-            // Generate a consistent pastel color based on the event title
+            const calendarName =
+              eventInfo.event.extendedProps.calendarName || "Local Calendar";
+
+            // Generate a consistent pastel color based on the calendar name
             const getColor = (str: string) => {
               let hash = 0;
               for (let i = 0; i < str.length; i++) {
@@ -213,18 +226,19 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
               const h = hash % 360;
               return `hsl(${h}, 70%, 80%)`;
             };
-            const bgColor = getColor(eventInfo.event.title);
+
+            const bgColor = getColor(calendarName);
+
             return {
               html: `
                   <div class="fc-event-main-frame" style="background-color: ${bgColor}; border-color: ${bgColor}">
                     <div class="fc-event-title-container">
-                      <div class="fc-event-title fc-sticky" style="color: hsl(var(--foreground))">
+                      <div class="fc-event-title fc-sticky" style="color: hsl(var(--background));">
                         ${eventInfo.event.title}
-                        ${
-                          source === "google"
-                            ? ' <span style="font-size: 0.75rem;">📅</span>'
-                            : ""
-                        }
+                        <div style="font-size: 0.75rem; opacity: 0.8;">
+                          ${calendarName}
+                          ${source === "google" ? " 📅" : ""}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -256,6 +270,7 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
       <style jsx global>{`
         /* Custom theme for FullCalendar to match shadcn/ui */
         .fc-theme-shadcn {
+          --fc-event-title-color: hsl(var(--background));
           --fc-border-color: hsl(var(--border));
           --fc-button-bg-color: hsl(var(--primary));
           --fc-button-border-color: hsl(var(--primary));
@@ -277,7 +292,6 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
         .fc th {
           padding: 0.5rem;
           font-weight: 500;
-          color: hsl(var(--foreground));
         }
 
         .fc td {
@@ -286,12 +300,14 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
         }
 
         .fc-event {
-          border-radius: var(--radius);
-          padding: 2px 4px;
-          font-size: 0.875rem;
-          border-width: 1px;
+          font-size: 0.8rem;
           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
           transition: transform 0.1s ease;
+        }
+
+        .fc-event-title {
+          padding: 0.25rem 0.5rem;
+          color: hsl(var(--background));
         }
 
         .fc-event:hover {

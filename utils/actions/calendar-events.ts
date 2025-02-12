@@ -51,7 +51,12 @@ export async function getCalendarEvents(
 
     // Convert Google events to our format
     const convertedGoogleEvents: GoogleCalendarEvent[] = googleEvents.map(
-      (event: calendar_v3.Schema$Event) => ({
+      (
+        event: calendar_v3.Schema$Event & {
+          calendarId?: string;
+          calendarName?: string;
+        }
+      ) => ({
         id: event.id!,
         title: event.summary || "Untitled Event",
         description: event.description || null,
@@ -63,6 +68,8 @@ export async function getCalendarEvents(
         externalIds: {
           googleEventId: event.id!,
           outlookEventId: null,
+          calendarId: event.calendarId || "primary",
+          calendarName: event.calendarName || "Primary Calendar",
         },
       })
     );
@@ -144,6 +151,8 @@ export async function createCalendarEvent(data: EventFormData) {
           externalIds: {
             googleEventId: googleEvent.id,
             outlookEventId: null,
+            calendarId: "primary",
+            calendarName: "Primary Calendar",
           },
         },
         include: {

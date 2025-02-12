@@ -16,6 +16,8 @@ export interface RecurrenceRule {
 export interface ExternalIds {
   googleEventId?: string | null;
   outlookEventId?: string | null;
+  calendarId?: string | null;
+  calendarName?: string | null;
 }
 
 // Attendee type
@@ -68,6 +70,8 @@ export const ExternalIdsSchema = z
   .object({
     googleEventId: z.string().nullable(),
     outlookEventId: z.string().nullable(),
+    calendarId: z.string().nullable(),
+    calendarName: z.string().nullable(),
   })
   .nullable();
 
@@ -132,6 +136,8 @@ export interface GoogleCalendarEvent extends BaseCalendarEvent {
   externalIds: {
     googleEventId: string;
     outlookEventId?: string | null;
+    calendarId: string;
+    calendarName: string;
   };
 }
 

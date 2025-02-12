@@ -30,14 +30,34 @@ export class GoogleCalendarService {
 
   async listEvents(start: Date, end: Date) {
     try {
-      const { data } = await this.calendar.events.list({
-        calendarId: "primary",
-        timeMin: start.toISOString(),
-        timeMax: end.toISOString(),
-        singleEvents: true,
-        orderBy: "startTime",
-      });
-      return data.items || [];
+      // First get list of all calendars
+      const { data: calendarList } = await this.calendar.calendarList.list();
+
+      // Fetch events from all calendars
+      const allEvents: calendar_v3.Schema$Event[] = [];
+
+      for (const cal of calendarList.items || []) {
+        if (!cal.id) continue;
+
+        const { data } = await this.calendar.events.list({
+          calendarId: cal.id,
+          timeMin: start.toISOString(),
+          timeMax: end.toISOString(),
+          singleEvents: true,
+          orderBy: "startTime",
+        });
+
+        // Add calendar name to each event for display
+        const eventsWithSource = (data.items || []).map((event) => ({
+          ...event,
+          calendarId: cal.id,
+          calendarName: cal.summary || "Unknown Calendar",
+        }));
+
+        allEvents.push(...eventsWithSource);
+      }
+
+      return allEvents;
     } catch (error) {
       console.error("Error listing events:", error);
       throw new Error("Failed to list events");
@@ -236,6 +256,8 @@ export class GoogleCalendarService {
               externalIds: {
                 googleEventId: event.id,
                 outlookEventId: null,
+                calendarId: cal.id,
+                calendarName: cal.summary || "Unknown Calendar",
               },
               attendees,
               status: event.status || "confirmed",

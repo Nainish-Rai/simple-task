@@ -90,6 +90,8 @@ type RecurrenceRule {
 type ExternalIds {
   googleEventId   String?
   outlookEventId  String?
+  calendarId      String?
+  calendarName    String?
 }
 
 type Attendee {
