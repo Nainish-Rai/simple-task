@@ -1,3 +1,5 @@
+"use client";
+
 import { Leaf, User, SliceIcon } from "lucide-react";
 import { OrbitingCirclesComponent } from "./orbiting-circles";
 import { TITLE_TAILWIND_CLASS } from "@/utils/constants";

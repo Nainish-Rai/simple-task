@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import type { calendarEvent } from "@prisma/client";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -19,10 +18,10 @@ import {
   deleteCalendarEvent,
 } from "@/utils/actions/calendar-events";
 import { toast } from "sonner";
-import { EventFormData } from "@/utils/types";
+import { CalendarEventType, EventFormData } from "@/utils/types";
 
 interface CalendarViewProps {
-  events?: calendarEvent[]; // Will be populated when we integrate with the database
+  events: CalendarEventType[];
 }
 
 export function CalendarView({ events = [] }: CalendarViewProps) {
@@ -32,7 +31,7 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
-  const [selectedEvent, setSelectedEvent] = useState<calendarEvent | null>(
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEventType | null>(
     null
   );
   const [selectedDates, setSelectedDates] = useState<{
@@ -44,17 +43,24 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  // Transform Prisma events to FullCalendar format
+  // Transform events to FullCalendar format
   const calendarEvents = events.map((event) => ({
     id: event.id,
     title: event.title,
-    start: new Date(event.startTime),
-    end: new Date(event.endTime),
+    start: event.startTime,
+    end: event.endTime,
     allDay: event.isAllDay,
     extendedProps: {
       description: event.description,
       location: event.location,
       status: event.status,
+      // Add source information for different handling
+      source:
+        "externalIds" in event && event.externalIds?.googleEventId
+          ? "google"
+          : "local",
+      googleEventId:
+        "externalIds" in event ? event.externalIds?.googleEventId : null,
     },
   }));
 
@@ -186,6 +192,25 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
               slotMinTime: "06:00:00",
               slotMaxTime: "22:00:00",
             },
+          }}
+          eventContent={(eventInfo) => {
+            const source = eventInfo.event.extendedProps.source;
+            return {
+              html: `
+                <div class="fc-event-main-frame">
+                  <div class="fc-event-title-container">
+                    <div class="fc-event-title fc-sticky">
+                      ${eventInfo.event.title}
+                      ${
+                        source === "google"
+                          ? ' <span style="font-size: 0.75rem;">📅</span>'
+                          : ""
+                      }
+                    </div>
+                  </div>
+                </div>
+              `,
+            };
           }}
         />
       </div>

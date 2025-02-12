@@ -1,7 +1,13 @@
-import Footer from './footer'
-import NavBar from './navbar'
+"use client";
 
-export default function PageWrapper({ children }: { children: React.ReactNode }) {
+import Footer from "./footer";
+import NavBar from "./navbar";
+
+export default function PageWrapper({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <>
       <NavBar />
@@ -11,5 +17,5 @@ export default function PageWrapper({ children }: { children: React.ReactNode })
       </main>
       <Footer />
     </>
-  )
+  );
 }

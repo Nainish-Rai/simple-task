@@ -1,3 +1,5 @@
+"use client";
+
 import { cn } from "@/lib/utils";
 
 export default function OrbitingCircles({
@@ -48,7 +50,7 @@ export default function OrbitingCircles({
           `absolute flex h-full w-full transform-gpu animate-orbit items-center justify-center rounded-full border
            [animation-delay:calc(var(--delay)*1000ms)] `,
           { "[animation-direction:reverse]": reverse },
-          className,
+          className
         )}
       >
         {children}

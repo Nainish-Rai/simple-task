@@ -2,14 +2,23 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/mongodb";
-import { CalendarEventSchema, EventFormData } from "../types";
-import { z } from "zod";
+import {
+  CalendarEventSchema,
+  EventFormData,
+  CalendarEventType,
+  GoogleCalendarEvent,
+} from "../types";
+import { getGoogleCalendarService } from "../services/google-calendar";
 
-export async function getCalendarEvents(start: Date, end: Date) {
+export async function getCalendarEvents(
+  start: Date,
+  end: Date
+): Promise<CalendarEventType[]> {
   const { userId } = auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const events = await prisma.calendarEvent.findMany({
+  // Get local events
+  const localEvents = await prisma.calendarEvent.findMany({
     where: {
       userId,
       startTime: {
@@ -19,12 +28,43 @@ export async function getCalendarEvents(start: Date, end: Date) {
         lte: end,
       },
     },
+    include: {
+      reminders: true,
+    },
     orderBy: {
       startTime: "asc",
     },
   });
 
-  return events;
+  // Try to get Google Calendar events if connected
+  try {
+    const googleCalendar = await getGoogleCalendarService();
+    const googleEvents = await googleCalendar.listEvents(start, end);
+
+    // Convert Google events to our format
+    const convertedGoogleEvents: GoogleCalendarEvent[] =
+      googleEvents?.map((event) => ({
+        id: event.id!,
+        title: event.summary || "Untitled Event",
+        description: event.description || null,
+        location: event.location || null,
+        startTime: new Date(event.start?.dateTime || event.start?.date!),
+        endTime: new Date(event.end?.dateTime || event.end?.date!),
+        isAllDay: Boolean(event.start?.date),
+        status: event.status || "confirmed",
+        externalIds: {
+          googleEventId: event.id!,
+          outlookEventId: null,
+        },
+      })) || [];
+
+    // Return combined events
+    return [...localEvents, ...convertedGoogleEvents];
+  } catch (error) {
+    console.error("Failed to fetch Google Calendar events:", error);
+    // Return only local events if Google Calendar sync fails
+    return localEvents;
+  }
 }
 
 export async function createCalendarEvent(data: EventFormData) {
@@ -45,24 +85,60 @@ export async function createCalendarEvent(data: EventFormData) {
 
   const eventData = {
     title: data.title,
-    description: data.description || "",
-    location: data.location || "",
+    description: data.description || null,
+    location: data.location || null,
     startTime,
     endTime,
     isAllDay: data.isAllDay,
     userId,
     status: "confirmed",
+    externalIds: null,
+    attendees: [],
+    recurrence: null,
   };
 
   // Validate the data
   const validatedData = CalendarEventSchema.parse(eventData);
 
-  // Create the event
-  const event = await prisma.calendarEvent.create({
+  // Create local event
+  const localEvent = await prisma.calendarEvent.create({
     data: validatedData,
+    include: {
+      reminders: true,
+    },
   });
 
-  return event;
+  // Try to create in Google Calendar if connected
+  try {
+    const googleCalendar = await getGoogleCalendarService();
+    const googleEvent = await googleCalendar.createEvent({
+      title: data.title,
+      description: data.description,
+      location: data.location,
+      startTime,
+      endTime,
+      isAllDay: data.isAllDay,
+    });
+
+    // Update local event with Google Calendar ID
+    await prisma.calendarEvent.update({
+      where: { id: localEvent.id },
+      data: {
+        externalIds: {
+          googleEventId: googleEvent.id,
+          outlookEventId: null,
+        },
+      },
+      include: {
+        reminders: true,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to create Google Calendar event:", error);
+    // Continue with local event only if Google Calendar sync fails
+  }
+
+  return localEvent;
 }
 
 export async function updateCalendarEvent(
@@ -77,6 +153,9 @@ export async function updateCalendarEvent(
     where: {
       id: eventId,
       userId,
+    },
+    include: {
+      reminders: true,
     },
   });
 
@@ -98,23 +177,50 @@ export async function updateCalendarEvent(
 
   const eventData = {
     title: data.title,
-    description: data.description || "",
-    location: data.location || "",
+    description: data.description || null,
+    location: data.location || null,
     startTime,
     endTime,
     isAllDay: data.isAllDay,
     userId,
     status: existingEvent.status,
+    externalIds: existingEvent.externalIds,
+    attendees: existingEvent.attendees,
+    recurrence: existingEvent.recurrence,
   };
 
   // Validate the data
   const validatedData = CalendarEventSchema.parse(eventData);
 
-  // Update the event
+  // Update local event
   const updatedEvent = await prisma.calendarEvent.update({
     where: { id: eventId },
     data: validatedData,
+    include: {
+      reminders: true,
+    },
   });
+
+  // Try to update in Google Calendar if connected
+  if (existingEvent.externalIds?.googleEventId) {
+    try {
+      const googleCalendar = await getGoogleCalendarService();
+      await googleCalendar.updateEvent(
+        existingEvent.externalIds.googleEventId,
+        {
+          title: data.title,
+          description: data.description,
+          location: data.location,
+          startTime,
+          endTime,
+          isAllDay: data.isAllDay,
+        }
+      );
+    } catch (error) {
+      console.error("Failed to update Google Calendar event:", error);
+      // Continue with local update if Google Calendar sync fails
+    }
+  }
 
   return updatedEvent;
 }
@@ -129,13 +235,27 @@ export async function deleteCalendarEvent(eventId: string) {
       id: eventId,
       userId,
     },
+    include: {
+      reminders: true,
+    },
   });
 
   if (!existingEvent) {
     throw new Error("Event not found");
   }
 
-  // Delete the event
+  // Delete from Google Calendar if connected
+  if (existingEvent.externalIds?.googleEventId) {
+    try {
+      const googleCalendar = await getGoogleCalendarService();
+      await googleCalendar.deleteEvent(existingEvent.externalIds.googleEventId);
+    } catch (error) {
+      console.error("Failed to delete Google Calendar event:", error);
+      // Continue with local deletion if Google Calendar sync fails
+    }
+  }
+
+  // Delete local event
   await prisma.calendarEvent.delete({
     where: { id: eventId },
   });

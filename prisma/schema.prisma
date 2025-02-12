@@ -77,6 +77,27 @@ model aiChat {
   createdAt DateTime @default(now())
 }
 
+type RecurrenceRule {
+  freq      String    // "DAILY", "WEEKLY", "MONTHLY", "YEARLY"
+  interval  Int?      // Every X days/weeks/months/years
+  until     DateTime? // End date
+  count     Int?      // Number of occurrences
+  byDay     String[]  // ["MO", "WE", "FR"]
+  byMonth   Int[]     // [1, 6, 12]
+  byMonthDay Int[]    // [1, 15, -1]
+}
+
+type ExternalIds {
+  googleEventId   String?
+  outlookEventId  String?
+}
+
+type Attendee {
+  email     String
+  name      String?
+  response  String? // "accepted", "declined", "tentative", "needsAction"
+}
+
 model calendarEvent {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   user        user      @relation(fields: [userId], references: [id])
@@ -88,10 +109,10 @@ model calendarEvent {
   location    String?
   status      String    @default("confirmed")
   isAllDay    Boolean   @default(false)
-  recurrence  Json?
+  recurrence  RecurrenceRule?
   reminders   reminder[]
-  externalIds Json?
-  attendees   Json?
+  externalIds ExternalIds?
+  attendees   Attendee[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
