@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import config from "./config";
 
-let clerkMiddleware: (arg0: (auth: any, req: any) => any) => { (arg0: any): any; new(): any; }, createRouteMatcher;
+let clerkMiddleware: (arg0: (auth: any, req: any) => any) => {
+    (arg0: any): any;
+    new (): any;
+  },
+  createRouteMatcher;
 
 if (config.auth.enabled) {
   try {
@@ -32,7 +36,7 @@ export default function middleware(req: any) {
 
 export const middlewareConfig = {
   matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|api/auth/google-calendar/callback|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
   ],
 };

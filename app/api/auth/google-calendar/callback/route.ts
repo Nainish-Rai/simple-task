@@ -29,12 +29,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Verify user
-    const { userId } = auth();
-    if (!userId || userId !== state) {
+    if (!state) {
       return Response.redirect(
         `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/calendar?error=unauthorized`
       );
+    }
+    const clerkUserId = state;
+
+    // Get user from database using Clerk ID
+    const dbUser = await prisma.user.findUnique({
+      where: { user_id: clerkUserId },
+    });
+
+    if (!dbUser) {
+      throw new Error("User not found in database");
     }
 
     // Exchange code for tokens
@@ -49,16 +57,16 @@ export async function GET(request: NextRequest) {
       throw new Error("Could not get Google account email");
     }
 
-    // Save or update calendar account
+    // Save or update calendar account using the MongoDB user ID
     await prisma.calendarAccount.upsert({
       where: {
         userId_accountEmail: {
-          userId,
+          userId: dbUser.id,
           accountEmail: userInfo.email,
         },
       },
       create: {
-        userId,
+        userId: dbUser.id,
         provider: "google",
         accountEmail: userInfo.email,
         accessToken: tokens.access_token!,
@@ -74,40 +82,58 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // List available calendars
-    const calendar = google.calendar({ version: "v3", auth: oauth2Client });
-    const { data: calendarList } = await calendar.calendarList.list();
+    try {
+      // List available calendars
+      const calendar = google.calendar({ version: "v3", auth: oauth2Client });
+      const { data: calendarList } = await calendar.calendarList.list();
 
-    // Update calendar IDs
-    if (calendarList.items) {
-      const calendarIds = calendarList.items.map((cal) => cal.id!);
-      await prisma.calendarAccount.update({
-        where: {
-          userId_accountEmail: {
-            userId,
-            accountEmail: userInfo.email,
+      // Update calendar IDs and perform initial sync
+      if (calendarList.items) {
+        const calendarIds = calendarList.items.map((cal) => cal.id!);
+        await prisma.calendarAccount.update({
+          where: {
+            userId_accountEmail: {
+              userId: dbUser.id,
+              accountEmail: userInfo.email,
+            },
           },
-        },
-        data: {
-          calendarIds,
-          // Set as primary if it's the first calendar account
-          isPrimary: {
-            set:
-              (await prisma.calendarAccount.count({
-                where: { userId },
-              })) === 1,
+          data: {
+            calendarIds,
+            isPrimary: {
+              set:
+                (await prisma.calendarAccount.count({
+                  where: { userId: dbUser.id },
+                })) === 1,
+            },
           },
-        },
-      });
+        });
+
+        // Perform initial calendar sync
+        const { GoogleCalendarService } = await import(
+          "@/utils/services/google-calendar"
+        );
+        await GoogleCalendarService.syncCalendars(dbUser.id, userInfo.email);
+      }
+
+      return Response.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/calendar?success=true`
+      );
+    } catch (error) {
+      console.error("Error during initial calendar sync:", error);
+      // Even if sync fails, we'll redirect with success since account connection worked
+      return Response.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/calendar?success=true&sync=retry`
+      );
     }
-
+  } catch (error: any) {
+    const errorMessage = error?.message || "Unknown error occurred";
+    console.error("Error in OAuth callback:", errorMessage);
     return Response.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/calendar?success=true`
-    );
-  } catch (error) {
-    console.error("Error in OAuth callback:", error);
-    return Response.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/calendar?error=server_error`
+      `${
+        process.env.NEXT_PUBLIC_APP_URL
+      }/dashboard/calendar?error=server_error&message=${encodeURIComponent(
+        errorMessage
+      )}`
     );
   }
 }

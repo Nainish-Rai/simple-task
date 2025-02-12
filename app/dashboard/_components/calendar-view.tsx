@@ -268,6 +268,7 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
           border-radius: var(--radius);
           padding: 2px 4px;
           font-size: 0.875rem;
+          color: hsl(var(--background));
         }
 
         .fc-day-today {
