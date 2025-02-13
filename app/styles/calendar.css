@@ -1,0 +1,60 @@
+/* Custom theme for FullCalendar to match shadcn/ui */
+.fc-theme-shadcn {
+  --fc-event-title-color: hsl(var(--background));
+  --fc-border-color: hsl(var(--border));
+  --fc-button-bg-color: hsl(var(--primary));
+  --fc-button-border-color: hsl(var(--primary));
+  --fc-button-hover-bg-color: hsl(var(--primary) / 0.9);
+  --fc-button-hover-border-color: hsl(var(--primary) / 0.9);
+  --fc-button-active-bg-color: hsl(var(--primary) / 0.8);
+  --fc-button-active-border-color: hsl(var(--primary) / 0.8);
+  --fc-today-bg-color: hsl(var(--accent) / 0.1);
+  --fc-page-bg-color: hsl(var(--background));
+  --fc-neutral-bg-color: hsl(var(--background));
+  --fc-list-event-hover-bg-color: hsl(var(--accent) / 0.1);
+}
+
+/* Essential FullCalendar overrides that can't be handled by Tailwind */
+.fc-timegrid-slot {
+  height: 5rem !important;
+}
+
+.fc-day-today {
+  background-color: hsl(var(--accent) / 0.1) !important;
+}
+
+/* Event color classes */
+.event-color-1 {
+  background-color: #f49097 !important;
+  color: #2a1517 !important;
+  box-shadow: 0 2px 4px rgba(244, 144, 151, 0.2) !important;
+  border-left: 3px solid #e57079 !important;
+}
+
+.event-color-2 {
+  background-color: #dfb2f4 !important;
+  color: #2a1f2d !important;
+  box-shadow: 0 2px 4px rgba(223, 178, 244, 0.2) !important;
+  border-left: 3px solid #ca8ee0 !important;
+}
+
+.event-color-3 {
+  background-color: #f5e960 !important;
+  color: #2d2b14 !important;
+  box-shadow: 0 2px 4px rgba(245, 233, 96, 0.2) !important;
+  border-left: 3px solid #e0d548 !important;
+}
+
+.event-color-4 {
+  background-color: #f2f5ff !important;
+  color: #1f222d !important;
+  box-shadow: 0 2px 4px rgba(242, 245, 255, 0.3) !important;
+  border-left: 3px solid #d8ddf7 !important;
+}
+
+.event-color-5 {
+  background-color: #55d6c2 !important;
+  color: #0f2925 !important;
+  box-shadow: 0 2px 4px rgba(85, 214, 194, 0.2) !important;
+  border-left: 3px solid #3ec2ae !important;
+}

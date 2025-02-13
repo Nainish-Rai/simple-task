@@ -1,375 +1,339 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Card } from "@/components/ui/card";
+import { useState } from "react";
+import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import FullCalendar from "@fullcalendar/react";
-import dayGridPlugin from "@fullcalendar/daygrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
-import interactionPlugin from "@fullcalendar/interaction";
-import { EventDialog } from "./event-dialog";
-import { DateSelectArg, EventClickArg } from "@fullcalendar/core";
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
-import {
-  createCalendarEvent,
-  updateCalendarEvent,
-  deleteCalendarEvent,
-} from "@/utils/actions/calendar-events";
-import { toast } from "sonner";
+import { PlusIcon } from "@radix-ui/react-icons";
 import { CalendarEventType, EventFormData } from "@/utils/types";
+import { EventDialog } from "./event-dialog";
+import { createCalendarEvent } from "@/utils/actions/calendar-events";
+import "@/app/styles/calendar.css";
 
 interface CalendarViewProps {
-  events: CalendarEventType[];
+  events?: CalendarEventType[]; // Make events optional
+}
+
+// Helper function to format time
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+// Helper function to get color class based on event ID or title
+function getEventColorClass(event: CalendarEventType): string {
+  const colorClasses = [
+    "event-color-1",
+    "event-color-2",
+    "event-color-3",
+    "event-color-4",
+    "event-color-5",
+  ];
+
+  const str = event.id || event.title;
+  const hash = str.split("").reduce((acc, char) => {
+    return char.charCodeAt(0) + ((acc << 5) - acc);
+  }, 0);
+
+  const index = Math.abs(hash) % colorClasses.length;
+  return colorClasses[index];
 }
 
 export function CalendarView({ events = [] }: CalendarViewProps) {
-  const [view, setView] = useState<
-    "dayGridMonth" | "timeGridWeek" | "timeGridDay"
-  >("dayGridMonth");
+  const [view, setView] = useState<"day" | "week" | "month">("week");
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
 
-  const calendarRef = useRef<FullCalendar | null>(null);
-
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEventType | null>(
-    null
-  );
-  const [selectedDates, setSelectedDates] = useState<{
-    start: Date;
-    end: Date;
-    allDay: boolean;
-  } | null>(null);
-
-  const [isPending, startTransition] = useTransition();
-  const router = useRouter();
-
-  // Helper function to get calendar name
-  const getCalendarName = (event: CalendarEventType): string => {
-    if ("externalIds" in event && event.externalIds?.calendarName) {
-      return event.externalIds.calendarName;
+  const handleCreateEvent = async (data: EventFormData) => {
+    try {
+      await createCalendarEvent(data);
+      setIsEventDialogOpen(false);
+      // Refresh events would happen automatically if the page uses React Server Components
+    } catch (error) {
+      console.error("Failed to create event:", error);
     }
-    return "Local Calendar";
   };
 
-  // Transform events to FullCalendar format
-  const calendarEvents = events.map((event) => {
-    const isGoogleEvent =
-      "externalIds" in event && event.externalIds?.googleEventId;
-    return {
-      id: event.id,
-      title: event.title,
-      start: event.startTime,
-      end: event.endTime,
-      allDay: event.isAllDay,
-      extendedProps: {
-        description: event.description,
-        location: event.location,
-        status: event.status,
-        source: isGoogleEvent ? "google" : "local",
-        googleEventId: isGoogleEvent ? event.externalIds?.googleEventId : null,
-        calendarName: isGoogleEvent
-          ? event.externalIds?.calendarName
-          : "Local Calendar",
-      },
-    };
+  // Navigation functions
+  const navigatePrevious = () => {
+    const newDate = new Date(currentDate);
+    if (view === "day") {
+      newDate.setDate(currentDate.getDate() - 1);
+    } else if (view === "week") {
+      newDate.setDate(currentDate.getDate() - 7);
+    } else {
+      newDate.setMonth(currentDate.getMonth() - 1);
+    }
+    setCurrentDate(newDate);
+  };
+
+  const navigateNext = () => {
+    const newDate = new Date(currentDate);
+    if (view === "day") {
+      newDate.setDate(currentDate.getDate() + 1);
+    } else if (view === "week") {
+      newDate.setDate(currentDate.getDate() + 7);
+    } else {
+      newDate.setMonth(currentDate.getMonth() + 1);
+    }
+    setCurrentDate(newDate);
+  };
+
+  // Generate time slots from 8:00 to 21:00
+  const timeSlots = Array.from({ length: 14 }, (_, i) => {
+    const hour = i + 8;
+    return `${hour.toString().padStart(2, "0")}:00`;
   });
 
-  const handleDateSelect = (selectInfo: DateSelectArg) => {
-    setSelectedDates({
-      start: selectInfo.start,
-      end: selectInfo.end,
-      allDay: selectInfo.allDay,
+  // Get the dates for current view
+  const getDates = () => {
+    const dates = [];
+    const firstDay = new Date(currentDate);
+
+    if (view === "day") {
+      return [currentDate];
+    } else if (view === "week") {
+      // Set to Monday of current week
+      firstDay.setDate(firstDay.getDate() - firstDay.getDay() + 1);
+      for (let i = 0; i < 5; i++) {
+        const date = new Date(firstDay);
+        date.setDate(firstDay.getDate() + i);
+        dates.push(date);
+      }
+    } else {
+      // Month view
+      firstDay.setDate(1);
+      const firstDayOfWeek = firstDay.getDay();
+      firstDay.setDate(1 - firstDayOfWeek);
+
+      // Get 6 weeks including the current month
+      for (let i = 0; i < 42; i++) {
+        const date = new Date(firstDay);
+        date.setDate(firstDay.getDate() + i);
+        dates.push(date);
+      }
+    }
+    return dates;
+  };
+
+  // Helper function to check if an event belongs to a specific day
+  const getEventsForDay = (date: Date) => {
+    if (!Array.isArray(events)) return []; // Add safety check
+
+    return events.filter((event) => {
+      if (!event?.startTime) return false; // Add null check for event properties
+      const eventDate = new Date(event.startTime);
+      return (
+        eventDate.getDate() === date.getDate() &&
+        eventDate.getMonth() === date.getMonth() &&
+        eventDate.getFullYear() === date.getFullYear()
+      );
     });
-    setDialogMode("create");
-    setDialogOpen(true);
   };
 
-  const handleEventClick = (clickInfo: EventClickArg) => {
-    const event = events.find((e) => e.id === clickInfo.event.id);
-    if (event) {
-      setSelectedEvent(event);
-      setDialogMode("edit");
-      setDialogOpen(true);
-    }
-  };
+  // Helper function to position events
+  const getEventStyle = (event: CalendarEventType) => {
+    const startHour = new Date(event.startTime).getHours();
+    const startMinutes = new Date(event.startTime).getMinutes();
+    const endHour = new Date(event.endTime).getHours();
+    const endMinutes = new Date(event.endTime).getMinutes();
 
-  const handleCreateNewEvent = () => {
-    setSelectedEvent(null);
-    setSelectedDates(null);
-    setDialogMode("create");
-    setDialogOpen(true);
-  };
+    const baseHour = 8; // Calendar starts at 8:00
+    const marginTop = ((startHour - baseHour) * 60 + startMinutes) * (80 / 60); // 80px per hour
+    const duration =
+      ((endHour - startHour) * 60 + (endMinutes - startMinutes)) * (80 / 60);
 
-  const handleEventSubmit = async (data: EventFormData) => {
-    try {
-      startTransition(async () => {
-        if (dialogMode === "create") {
-          await createCalendarEvent(data);
-          toast.success("Event created successfully");
-        } else if (dialogMode === "edit" && selectedEvent) {
-          await updateCalendarEvent(selectedEvent.id, data);
-          toast.success("Event updated successfully");
-        }
-        router.refresh();
-        setDialogOpen(false);
-      });
-    } catch (error) {
-      console.error("Failed to save event:", error);
-      toast.error("Failed to save event");
-    }
-  };
-
-  const handleEventDelete = async () => {
-    if (!selectedEvent) return;
-
-    try {
-      startTransition(async () => {
-        await deleteCalendarEvent(selectedEvent.id);
-        toast.success("Event deleted successfully");
-        router.refresh();
-        setDialogOpen(false);
-      });
-    } catch (error) {
-      console.error("Failed to delete event:", error);
-      toast.error("Failed to delete event");
-    }
+    return {
+      marginTop: `${marginTop}px`,
+      height: `${duration}px`,
+    };
   };
 
   return (
-    <Card className="p-4 flex-1">
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex gap-2">
-          <Button
-            variant={view === "dayGridMonth" ? "default" : "outline"}
-            size="sm"
-            onClick={() => {
-              calendarRef.current?.getApi().changeView("dayGridMonth");
-              setView("dayGridMonth");
-            }}
-          >
-            Month
-          </Button>
-          <Button
-            variant={view === "timeGridWeek" ? "default" : "outline"}
-            size="sm"
-            onClick={() => {
-              calendarRef.current?.getApi().changeView("timeGridWeek");
-              setView("timeGridWeek");
-            }}
-          >
-            Week
-          </Button>
-          <Button
-            variant={view === "timeGridDay" ? "default" : "outline"}
-            size="sm"
-            onClick={() => {
-              calendarRef.current?.getApi().changeView("timeGridDay");
-              setView("timeGridDay");
-            }}
-          >
-            Day
-          </Button>
+    <div className="flex flex-col h-full p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <h1 className="text-2xl font-semibold">Calendar</h1>
+          <span className="px-3 py-1 text-sm bg-primary/10 text-primary rounded-full">
+            Referat deadline: 1h 26m
+          </span>
+          <Avatar className="w-8 h-8" />
         </div>
-        <Button size="sm" onClick={handleCreateNewEvent}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Event
-        </Button>
       </div>
 
-      <div className="mt-4 fc-theme-shadcn">
-        <FullCalendar
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView={view}
-          ref={calendarRef}
-          headerToolbar={false} // We're using our custom header
-          events={calendarEvents}
-          editable={true}
-          selectable={true}
-          selectMirror={true}
-          dayMaxEvents={true}
-          weekends={true}
-          select={handleDateSelect}
-          eventClick={handleEventClick}
-          height="auto"
-          contentHeight="auto"
-          // Additional view-specific options
-          views={{
-            timeGrid: {
-              nowIndicator: true,
-              slotMinTime: "06:00:00",
-              slotMaxTime: "22:00:00",
-            },
-          }}
-          // Add this prop to handle view changes
-          datesSet={(dateInfo) => {
-            setView(
-              dateInfo.view.type as
-                | "dayGridMonth"
-                | "timeGridWeek"
-                | "timeGridDay"
-            );
-          }}
-          eventContent={(eventInfo) => {
-            const source = eventInfo.event.extendedProps.source;
-            const calendarName =
-              eventInfo.event.extendedProps.calendarName || "Local Calendar";
+      {/* View Toggle */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2 rounded-lg border bg-background p-1">
+          {["day", "week", "month"].map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v as "day" | "week" | "month")}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                view === v
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {v.charAt(0).toUpperCase() + v.slice(1)}
+            </button>
+          ))}
+        </div>
 
-            // Generate a consistent pastel color based on the calendar name
-            const getColor = (str: string) => {
-              let hash = 0;
-              for (let i = 0; i < str.length; i++) {
-                hash = str.charCodeAt(i) + ((hash << 5) - hash);
-              }
-              // Generate pastel HSL color
-              const h = hash % 360;
-              return `hsl(${h}, 70%, 80%)`;
-            };
+        <div className="flex items-center space-x-4">
+          <button
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            onClick={navigatePrevious}
+          >
+            ←
+          </button>
+          <span className="text-sm font-medium">
+            {view === "month"
+              ? currentDate.toLocaleDateString("en-US", {
+                  month: "long",
+                  year: "numeric",
+                })
+              : view === "day"
+              ? currentDate.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : (() => {
+                  const weekStart = new Date(currentDate);
+                  weekStart.setDate(
+                    weekStart.getDate() - weekStart.getDay() + 1
+                  );
+                  const weekEnd = new Date(weekStart);
+                  weekEnd.setDate(weekStart.getDate() + 4);
+                  return `${weekStart.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })} - ${weekEnd.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })}`;
+                })()}
+          </span>
+          <button
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            onClick={navigateNext}
+          >
+            →
+          </button>
+        </div>
+      </div>
 
-            const bgColor = getColor(calendarName);
-
-            return {
-              html: `
-                  <div class="fc-event-main-frame" style="background-color: ${bgColor}; border-color: ${bgColor}">
-                    <div class="fc-event-title-container">
-                      <div class="fc-event-title fc-sticky" style="color: hsl(var(--background));">
-                        ${eventInfo.event.title}
-                        <div style="font-size: 0.75rem; opacity: 0.8;">
-                          ${calendarName}
-                          ${source === "google" ? " 📅" : ""}
-                        </div>
+      {/* Calendar Grid */}
+      <div className="flex-1 overflow-auto">
+        {view === "month" ? (
+          <div className="grid grid-cols-7 gap-px bg-border">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+              <div key={day} className="p-2 text-sm font-medium bg-background">
+                {day}
+              </div>
+            ))}
+            {getDates().map((date, index) => {
+              const dayEvents = getEventsForDay(date);
+              const isCurrentMonth = date.getMonth() === currentDate.getMonth();
+              return (
+                <div
+                  key={index}
+                  className={`min-h-[120px] p-2 m-[1px] bg-background ${
+                    isCurrentMonth ? "" : "text-muted-foreground bg-neutral-900"
+                  }`}
+                >
+                  <span className="text-sm">{date.getDate()}</span>
+                  <div className="mt-1 space-y-1">
+                    {dayEvents.slice(0, 3).map((event) => (
+                      <div
+                        key={event.id}
+                        className={`px-2 py-1 text-xs rounded-md ${getEventColorClass(
+                          event
+                        )} truncate`}
+                      >
+                        {event.title}
                       </div>
-                    </div>
+                    ))}
+                    {dayEvents.length > 3 && (
+                      <div className="text-xs text-muted-foreground">
+                        +{dayEvents.length - 3} more
+                      </div>
+                    )}
                   </div>
-                `,
-            };
-          }}
-        />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex">
+            {/* Time Labels */}
+            <div className="w-16 flex-shrink-0 border-r">
+              {timeSlots.map((time) => (
+                <div
+                  key={time}
+                  className="h-20 border-b text-xs text-muted-foreground p-2"
+                >
+                  {time}
+                </div>
+              ))}
+            </div>
+
+            {/* Calendar Content */}
+            <div
+              className={`flex-1 grid ${
+                view === "day" ? "grid-cols-1" : "grid-cols-5"
+              } gap-px bg-border`}
+            >
+              {getDates().map((date, index) => {
+                const dayEvents = getEventsForDay(date);
+                return (
+                  <div key={index} className="relative bg-background">
+                    <div className="p-2 text-sm font-medium border-b sticky top-0 bg-background">
+                      {date.toLocaleDateString("en-US", { weekday: "short" })}
+                    </div>
+                    {dayEvents.map((event) => (
+                      <div
+                        key={event.id}
+                        className={`absolute left-0 right-0 mx-1 p-2 rounded-md text-xs ${getEventColorClass(
+                          event
+                        )}`}
+                        style={getEventStyle(event)}
+                      >
+                        <div className="font-medium">{event.title}</div>
+                        <div>
+                          {formatTime(new Date(event.startTime))} -{" "}
+                          {formatTime(new Date(event.endTime))}
+                        </div>
+                        {event.location && <div>{event.location}</div>}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Create Event Button */}
+      <Button
+        className="fixed bottom-6 right-6 shadow-lg"
+        onClick={() => setIsEventDialogOpen(true)}
+      >
+        <PlusIcon className="w-4 h-4 mr-2" />
+        Create event
+      </Button>
+
+      {/* Event Dialog */}
       <EventDialog
-        isOpen={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        mode={dialogMode}
-        initialData={
-          dialogMode === "edit"
-            ? selectedEvent
-            : selectedDates
-            ? {
-                startDate: selectedDates.start,
-                endDate: selectedDates.end,
-                isAllDay: selectedDates.allDay,
-              }
-            : undefined
-        }
-        onSubmit={handleEventSubmit}
-        onDelete={dialogMode === "edit" ? handleEventDelete : undefined}
+        isOpen={isEventDialogOpen}
+        onClose={() => setIsEventDialogOpen(false)}
+        mode="create"
+        onSubmit={handleCreateEvent}
       />
-
-      <style jsx global>{`
-        /* Custom theme for FullCalendar to match shadcn/ui */
-        .fc-theme-shadcn {
-          --fc-event-title-color: hsl(var(--background));
-          --fc-border-color: hsl(var(--border));
-          --fc-button-bg-color: hsl(var(--primary));
-          --fc-button-border-color: hsl(var(--primary));
-          --fc-button-hover-bg-color: hsl(var(--primary) / 0.9);
-          --fc-button-hover-border-color: hsl(var(--primary) / 0.9);
-          --fc-button-active-bg-color: hsl(var(--primary) / 0.8);
-          --fc-button-active-border-color: hsl(var(--primary) / 0.8);
-          --fc-today-bg-color: hsl(var(--accent) / 0.1);
-          --fc-page-bg-color: hsl(var(--background));
-          --fc-neutral-bg-color: hsl(var(--background));
-          --fc-list-event-hover-bg-color: hsl(var(--accent) / 0.1);
-        }
-
-        .fc {
-          background-color: hsl(var(--background));
-          border-radius: var(--radius);
-        }
-
-        .fc th {
-          padding: 0.5rem;
-          font-weight: 500;
-        }
-
-        .fc td {
-          border-color: hsl(var(--border));
-          background-color: hsl(var(--background));
-        }
-
-        .fc-event {
-          font-size: 0.8rem;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-          transition: transform 0.1s ease;
-        }
-
-        .fc-event-title {
-          padding: 0.25rem 0.5rem;
-          color: hsl(var(--background));
-        }
-
-        .fc-event:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-        }
-
-        .fc-day-today {
-          background-color: hsl(var(--accent) / 0.1) !important;
-        }
-
-        .fc-highlight {
-          background-color: hsl(var(--accent) / 0.2) !important;
-        }
-
-        .fc-daygrid-day-number,
-        .fc-col-header-cell-cushion {
-          color: hsl(var(--foreground));
-        }
-
-        /* Time grid specific styles */
-        .fc-timegrid-slot-label {
-          color: hsl(var(--foreground) / 0.8);
-          font-size: 0.875rem;
-        }
-
-        .fc-timegrid-axis {
-          border-color: hsl(var(--border));
-        }
-
-        .fc-timegrid-slot {
-          height: 3rem !important;
-        }
-
-        .fc-timegrid-event {
-          border-radius: var(--radius);
-          margin: 1px;
-        }
-
-        /* Week view specific */
-        .fc-timeGridWeek-view .fc-col-header-cell {
-          padding: 0.5rem;
-        }
-
-        /* Day view specific */
-        .fc-timeGridDay-view .fc-col-header-cell {
-          padding: 0.75rem;
-        }
-
-        /* General improvements */
-        .fc-scrollgrid {
-          border-radius: var(--radius);
-        }
-
-        .fc-scrollgrid-section > td {
-          border-color: hsl(var(--border));
-        }
-
-        .fc-view {
-          background: hsl(var(--background));
-        }
-      `}</style>
-    </Card>
+    </div>
   );
 }
