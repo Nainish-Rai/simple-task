@@ -9,6 +9,10 @@ import {
   GoogleCalendarEvent,
 } from "../types";
 import { getGoogleCalendarService } from "../services/google-calendar";
+import {
+  validateCalendarSync,
+  SyncValidationResult,
+} from "../services/sync-validation";
 import { calendar_v3 } from "googleapis";
 
 export async function getCalendarEvents(
@@ -59,23 +63,49 @@ export async function getCalendarEvents(
       ) => ({
         id: event.id!,
         title: event.summary || "Untitled Event",
-        description: event.description || null,
-        location: event.location || null,
-        startTime: new Date(event.start?.dateTime || event.start?.date!),
-        endTime: new Date(event.end?.dateTime || event.end?.date!),
+        description: event.description ?? null,
+        location: event.location ?? null,
+        startTime: new Date(
+          event.start?.dateTime || event.start?.date || new Date()
+        ),
+        endTime: new Date(event.end?.dateTime || event.end?.date || new Date()),
         isAllDay: Boolean(event.start?.date),
         status: event.status || "confirmed",
         externalIds: {
           googleEventId: event.id!,
           outlookEventId: null,
-          calendarId: event.calendarId || "primary",
-          calendarName: event.calendarName || "Primary Calendar",
+          calendarId: event.calendarId ?? "primary",
+          calendarName: event.calendarName ?? "Primary Calendar",
         },
       })
     );
 
-    // Return combined events
-    return [...localEvents, ...convertedGoogleEvents];
+    // Create a map of local events that have Google Calendar IDs
+    const localEventsWithGoogleId = new Map(
+      localEvents
+        .filter((event) => event.externalIds?.googleEventId)
+        .map((event) => [event.externalIds!.googleEventId!, event])
+    );
+
+    // Filter out Google events that already exist locally
+    const uniqueGoogleEvents = convertedGoogleEvents.filter(
+      (googleEvent) => !localEventsWithGoogleId.has(googleEvent.id)
+    );
+
+    // Combine unique events
+    const allEvents = [...localEvents, ...uniqueGoogleEvents];
+
+    // Validate sync status
+    const { status } = await validateCalendarSync(userId, start, end, {
+      fixDiscrepancies: true, // Automatically fix any sync issues
+      logResults: true, // Log sync validation results
+    });
+
+    if (status === "out_of_sync") {
+      console.warn("Calendar sync validation detected and fixed discrepancies");
+    }
+
+    return allEvents;
   } catch (error) {
     console.error("Failed to fetch Google Calendar events:", error);
     // Return only local events if Google Calendar sync fails
