@@ -138,44 +138,69 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
   };
 
   return (
-    <Card className="p-4 flex-1">
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex gap-2">
+    <Card className="p-6 flex-1">
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-semibold">Calendar</h1>
+          <div className="flex gap-1 dark:bg-background border bg-gray-100 p-1 rounded-lg">
+            <Button
+              variant={view === "dayGridMonth" ? "default" : "ghost"}
+              size="sm"
+              className={
+                view === "dayGridMonth"
+                  ? "bg-white/90 shadow-sm"
+                  : "hover:bg-white/50"
+              }
+              onClick={() => {
+                calendarRef.current?.getApi().changeView("dayGridMonth");
+                setView("dayGridMonth");
+              }}
+            >
+              Month
+            </Button>
+            <Button
+              variant={view === "timeGridWeek" ? "default" : "ghost"}
+              size="sm"
+              className={
+                view === "timeGridWeek"
+                  ? "bg-white shadow-sm"
+                  : "hover:bg-white/50"
+              }
+              onClick={() => {
+                calendarRef.current?.getApi().changeView("timeGridWeek");
+                setView("timeGridWeek");
+              }}
+            >
+              Week
+            </Button>
+            <Button
+              variant={view === "timeGridDay" ? "default" : "ghost"}
+              size="sm"
+              className={
+                view === "timeGridDay"
+                  ? "bg-white shadow-sm"
+                  : "hover:bg-white/50"
+              }
+              onClick={() => {
+                calendarRef.current?.getApi().changeView("timeGridDay");
+                setView("timeGridDay");
+              }}
+            >
+              Day
+            </Button>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-red-500">Referat deadline: 1h 26m</span>
           <Button
-            variant={view === "dayGridMonth" ? "default" : "outline"}
             size="sm"
-            onClick={() => {
-              calendarRef.current?.getApi().changeView("dayGridMonth");
-              setView("dayGridMonth");
-            }}
+            onClick={handleCreateNewEvent}
+            className="fixed z-10 bottom-0 mb-2 rounded-lg right-2 dark:bg-white dark:text-black bg-black text-white hover:bg-black/90"
           >
-            Month
-          </Button>
-          <Button
-            variant={view === "timeGridWeek" ? "default" : "outline"}
-            size="sm"
-            onClick={() => {
-              calendarRef.current?.getApi().changeView("timeGridWeek");
-              setView("timeGridWeek");
-            }}
-          >
-            Week
-          </Button>
-          <Button
-            variant={view === "timeGridDay" ? "default" : "outline"}
-            size="sm"
-            onClick={() => {
-              calendarRef.current?.getApi().changeView("timeGridDay");
-              setView("timeGridDay");
-            }}
-          >
-            Day
+            <Plus className="h-4 w-4 mr-2" />
+            Create event
           </Button>
         </div>
-        <Button size="sm" onClick={handleCreateNewEvent}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Event
-        </Button>
       </div>
 
       <div className="mt-4 fc-theme-shadcn">
@@ -198,10 +223,21 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
           views={{
             timeGrid: {
               nowIndicator: true,
-              slotMinTime: "06:00:00",
-              slotMaxTime: "22:00:00",
+              slotMinTime: "08:00:00",
+              slotMaxTime: "20:00:00",
+              slotDuration: "00:30:00",
+              slotLabelFormat: {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              },
             },
           }}
+          slotLabelClassNames="text-xs  text-gray-500"
+          dayHeaderClassNames="text-md font-medium"
+          eventClassNames="rounded-3xl! bg-black border-none px-0! "
+          allDayClassNames="text-xs"
+          slotLaneClassNames="border-gray-100"
           // Add this prop to handle view changes
           datesSet={(dateInfo) => {
             setView(
@@ -212,37 +248,48 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
             );
           }}
           eventContent={(eventInfo) => {
-            const source = eventInfo.event.extendedProps.source;
-            const calendarName =
-              eventInfo.event.extendedProps.calendarName || "Local Calendar";
+            const title = eventInfo.event.title;
+            const room = eventInfo.event.extendedProps.location || "";
 
-            // Generate a consistent pastel color based on the calendar name`
-            const getColor = (str: string) => {
+            // Generate pastel color based on event title
+            const generatePastelColor = (str: string) => {
               let hash = 0;
               for (let i = 0; i < str.length; i++) {
                 hash = str.charCodeAt(i) + ((hash << 5) - hash);
               }
-              // Generate pastel HSL color
-              const h = hash % 360;
-              return `hsl(${h}, 70%, 80%)`;
+
+              // Generate HSL values for pastel colors
+              const h = hash % 360; // Any hue
+              const s = 65 + (hash % 20); // Saturation between 65-85%
+              const l = 85 + (hash % 10); // Lightness between 85-95%
+
+              return {
+                background: `hsl(${h}, ${s}%, ${l}%)`,
+                border: `hsl(${h}, ${s}%, ${l - 15}%)`,
+              };
             };
 
-            const bgColor = getColor(calendarName);
+            const colors = generatePastelColor(title);
 
             return {
               html: `
-                  <div class="fc-event-main-frame" style="background-color: ${bgColor}; border-color: ${bgColor}">
-                    <div class="fc-event-title-container">
-                      <div class="fc-event-title fc-sticky" style="color: hsl(var(--background));">
-                        ${eventInfo.event.title}
-                        <div style="font-size: 0.75rem; opacity: 0.8;">
-                          ${calendarName}
-                          ${source === "google" ? " 📅" : ""}
-                        </div>
-                      </div>
+                <div class="fc-event-main-frame" style="background-color: ${
+                  colors.background
+                }; border-left: 3px solid ${
+                colors.border
+              }; border-radius: 4px;">
+                  <div class="fc-event-title-container">
+                    <div class="fc-event-title fc-sticky" style="color: #4b5563; padding: 4px 6px;">
+                      ${title}
+                      ${
+                        room
+                          ? `<div style="font-size: 0.75rem; opacity: 0.7;">${room}</div>`
+                          : ""
+                      }
                     </div>
                   </div>
-                `,
+                </div>
+              `,
             };
           }}
         />
