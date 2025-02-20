@@ -74,6 +74,7 @@
   font-size: 0.875rem !important;
   font-weight: 500 !important;
   color: #4b5563 !important;
+  background-color: hsl(var(--background));
 }
 
 .fc-event-time {
