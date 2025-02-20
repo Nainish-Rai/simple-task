@@ -10,21 +10,24 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { EventDialog } from "./event-dialog";
 import { DateSelectArg, EventClickArg } from "@fullcalendar/core";
-import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  createCalendarEvent,
-  updateCalendarEvent,
-  deleteCalendarEvent,
-} from "@/utils/actions/calendar-events";
 import { toast } from "sonner";
 import { CalendarEventType, EventFormData } from "@/utils/types";
+import {
+  useCreateEvent,
+  useUpdateEvent,
+  useDeleteEvent,
+} from "@/utils/hook/useCalendar";
 
 interface CalendarViewProps {
   events: CalendarEventType[];
+  isLoading?: boolean;
 }
 
-export function CalendarView({ events = [] }: CalendarViewProps) {
+export function CalendarView({
+  events = [],
+  isLoading = false,
+}: CalendarViewProps) {
   const [view, setView] = useState<
     "dayGridMonth" | "timeGridWeek" | "timeGridDay"
   >("dayGridMonth");
@@ -42,8 +45,12 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
     allDay: boolean;
   } | null>(null);
 
-  const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Use TanStack Query mutations
+  const createEventMutation = useCreateEvent();
+  const updateEventMutation = useUpdateEvent();
+  const deleteEventMutation = useDeleteEvent();
 
   // Helper function to get calendar name
   const getCalendarName = (event: CalendarEventType): string => {
@@ -104,17 +111,18 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
 
   const handleEventSubmit = async (data: EventFormData) => {
     try {
-      startTransition(async () => {
-        if (dialogMode === "create") {
-          await createCalendarEvent(data);
-          toast.success("Event created successfully");
-        } else if (dialogMode === "edit" && selectedEvent) {
-          await updateCalendarEvent(selectedEvent.id, data);
-          toast.success("Event updated successfully");
-        }
-        router.refresh();
-        setDialogOpen(false);
-      });
+      if (dialogMode === "create") {
+        await createEventMutation.mutateAsync(data);
+        toast.success("Event created successfully");
+      } else if (dialogMode === "edit" && selectedEvent) {
+        await updateEventMutation.mutateAsync({
+          eventId: selectedEvent.id,
+          data,
+        });
+        toast.success("Event updated successfully");
+      }
+      router.refresh();
+      setDialogOpen(false);
     } catch (error) {
       console.error("Failed to save event:", error);
       toast.error("Failed to save event");
@@ -125,12 +133,10 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
     if (!selectedEvent) return;
 
     try {
-      startTransition(async () => {
-        await deleteCalendarEvent(selectedEvent.id);
-        toast.success("Event deleted successfully");
-        router.refresh();
-        setDialogOpen(false);
-      });
+      await deleteEventMutation.mutateAsync(selectedEvent.id);
+      toast.success("Event deleted successfully");
+      router.refresh();
+      setDialogOpen(false);
     } catch (error) {
       console.error("Failed to delete event:", error);
       toast.error("Failed to delete event");
@@ -191,11 +197,11 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-red-500">Referat deadline: 1h 26m</span>
           <Button
             size="sm"
             onClick={handleCreateNewEvent}
             className="fixed z-10 bottom-0 mb-2 rounded-lg right-2 dark:bg-white dark:text-black bg-black text-white hover:bg-black/90"
+            disabled={createEventMutation.isPending}
           >
             <Plus className="h-4 w-4 mr-2" />
             Create event
@@ -208,7 +214,7 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView={view}
           ref={calendarRef}
-          headerToolbar={false} // We're using our custom header
+          headerToolbar={false}
           events={calendarEvents}
           editable={true}
           selectable={true}
@@ -219,7 +225,6 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
           eventClick={handleEventClick}
           height="auto"
           contentHeight="auto"
-          // Additional view-specific options
           views={{
             timeGrid: {
               nowIndicator: true,
@@ -233,12 +238,11 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
               },
             },
           }}
-          slotLabelClassNames="text-xs  text-gray-500"
+          slotLabelClassNames="text-xs text-gray-500"
           dayHeaderClassNames="text-md font-medium"
-          eventClassNames="rounded-3xl! bg-black border-none px-0! "
+          eventClassNames="rounded-3xl! bg-black border-none px-0!"
           allDayClassNames="text-xs"
           slotLaneClassNames="border-gray-100"
-          // Add this prop to handle view changes
           datesSet={(dateInfo) => {
             setView(
               dateInfo.view.type as
@@ -258,10 +262,9 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
                 hash = str.charCodeAt(i) + ((hash << 5) - hash);
               }
 
-              // Generate HSL values for pastel colors
-              const h = hash % 360; // Any hue
-              const s = 65 + (hash % 20); // Saturation between 65-85%
-              const l = 85 + (hash % 10); // Lightness between 85-95%
+              const h = hash % 360;
+              const s = 65 + (hash % 20);
+              const l = 85 + (hash % 10);
 
               return {
                 background: `hsl(${h}, ${s}%, ${l}%)`,
@@ -312,10 +315,14 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
         }
         onSubmit={handleEventSubmit}
         onDelete={dialogMode === "edit" ? handleEventDelete : undefined}
+        isLoading={
+          createEventMutation.isPending ||
+          updateEventMutation.isPending ||
+          deleteEventMutation.isPending
+        }
       />
 
       <style jsx global>{`
-        /* Custom theme for FullCalendar to match shadcn/ui */
         .fc-theme-shadcn {
           --fc-event-title-color: hsl(var(--background));
           --fc-border-color: hsl(var(--border));
@@ -375,7 +382,6 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
           color: hsl(var(--foreground));
         }
 
-        /* Time grid specific styles */
         .fc-timegrid-slot-label {
           color: hsl(var(--foreground) / 0.8);
           font-size: 0.875rem;
@@ -394,17 +400,14 @@ export function CalendarView({ events = [] }: CalendarViewProps) {
           margin: 1px;
         }
 
-        /* Week view specific */
         .fc-timeGridWeek-view .fc-col-header-cell {
           padding: 0.5rem;
         }
 
-        /* Day view specific */
         .fc-timeGridDay-view .fc-col-header-cell {
           padding: 0.75rem;
         }
 
-        /* General improvements */
         .fc-scrollgrid {
           border-radius: var(--radius);
         }

@@ -19,6 +19,7 @@ interface EventDialogProps {
   initialData?: any; // We'll type this properly when we have the event type
   onSubmit: (data: EventFormData) => Promise<void>;
   onDelete?: () => Promise<void>;
+  isLoading?: boolean; // New prop for loading state
 }
 
 export function EventDialog({
@@ -28,18 +29,13 @@ export function EventDialog({
   initialData,
   onSubmit,
   onDelete,
+  isLoading = false,
 }: EventDialogProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-
   const handleSubmit = async (data: EventFormData) => {
     try {
-      setIsSubmitting(true);
       await onSubmit(data);
     } catch (error) {
       console.error("Failed to save event:", error);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -47,12 +43,9 @@ export function EventDialog({
     if (!onDelete) return;
 
     try {
-      setIsDeleting(true);
       await onDelete();
     } catch (error) {
       console.error("Failed to delete event:", error);
-    } finally {
-      setIsDeleting(false);
     }
   };
 
@@ -68,7 +61,7 @@ export function EventDialog({
           <EventForm
             initialData={initialData}
             onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
+            isSubmitting={isLoading}
           />
           {mode === "edit" && onDelete && (
             <div className="mt-6 flex justify-end">
@@ -76,12 +69,10 @@ export function EventDialog({
                 variant="destructive"
                 size="sm"
                 onClick={handleDelete}
-                disabled={isDeleting}
+                disabled={isLoading}
               >
-                {isDeleting && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {!isDeleting && <Trash2 className="mr-2 h-4 w-4" />}
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {!isLoading && <Trash2 className="mr-2 h-4 w-4" />}
                 Delete Event
               </Button>
             </div>
