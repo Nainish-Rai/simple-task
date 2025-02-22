@@ -4,10 +4,8 @@ import {
   deleteCalendarEvent,
 } from "@/utils/actions/calendar-events";
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { eventId: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ eventId: string }> }) {
+  const params = await props.params;
   try {
     const data = await request.json();
     const eventId = params.eventId;
@@ -22,10 +20,8 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: { eventId: string } }
-) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ eventId: string }> }) {
+  const params = await props.params;
   try {
     const eventId = params.eventId;
     await deleteCalendarEvent(eventId);

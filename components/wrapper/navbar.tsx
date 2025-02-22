@@ -44,11 +44,8 @@ const components: { title: string; href: string; description: string }[] = [
 ];
 
 export default function NavBar() {
-  let userId = null;
-  if (config?.auth?.enabled) {
-    const user = useAuth();
-    userId = user?.userId;
-  }
+  const auth = useAuth();
+  const userId = config?.auth?.enabled ? auth?.userId : null;
 
   return (
     <div className="flex min-w-full fixed justify-between p-2 border-b z-10 dark:bg-black dark:bg-opacity-50 backdrop-blur-[12px] bg-white">

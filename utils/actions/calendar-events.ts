@@ -19,7 +19,7 @@ export async function getCalendarEvents(
   start: Date,
   end: Date
 ): Promise<CalendarEventType[]> {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
   // First get the user's MongoDB ID
