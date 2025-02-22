@@ -1,35 +1,46 @@
-# Database Schema Design
+# Database Schema Updates
 
-## Overview
-
-This document outlines the database schema design for our calendar application, including both existing and new models required for calendar functionality.
-
-## Core Models
-
-### User Model (Existing)
+## New Types
 
 ```prisma
-model user {
-  id                String   @id @default(auto()) @map("_id") @db.ObjectId
-  created_time      DateTime @default(now())
-  email             String   @unique
-  first_name        String?
-  last_name         String?
-  gender            String?
-  profile_image_url String?
-  user_id           String   @unique
-  subscription      String?
-  // New relations for calendar functionality
-  calendarEvents    calendarEvent[]
-  calendarAccounts  calendarAccount[]
-  availability      availability[]
+type Attachment {
+  fileName    String
+  fileSize    Int
+  fileType    String
+  url         String
+  uploadedAt  DateTime
+}
+
+type AgendaItem {
+  title       String
+  duration    Int?      // in minutes
+  presenter   String?
+  notes       String?
+  status      String    // "pending", "completed", "skipped"
+}
+
+type Comment {
+  id          String
+  userId      String
+  content     String
+  createdAt   DateTime
+  updatedAt   DateTime
+}
+
+type MeetingIntegration {
+  provider    String    // "google_meet", "zoom"
+  meetingUrl  String
+  meetingId   String?
+  password    String?
+  settings    Json?
 }
 ```
 
-### Calendar Event Model (New)
+## Extended calendarEvent Model
 
 ```prisma
 model calendarEvent {
+  // Existing fields remain unchanged
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   user        user      @relation(fields: [userId], references: [id])
   userId      String    @db.ObjectId
@@ -38,127 +49,66 @@ model calendarEvent {
   startTime   DateTime
   endTime     DateTime
   location    String?
-  status      String    @default("confirmed") // confirmed, tentative, cancelled
+  status      String    @default("confirmed")
   isAllDay    Boolean   @default(false)
-  recurrence  Json?     // Recurrence rules in iCal format
+  recurrence  RecurrenceRule?
   reminders   reminder[]
-  externalIds Json?     // Map of calendar service IDs (Google Calendar, Outlook)
-  attendees   Json?     // Array of attendee emails and response status
+  externalIds ExternalIds?
+  attendees   Attendee[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  // New fields to add
+  colorCode           String?
+  priority            String?    @default("medium")  // "low", "medium", "high"
+  meetingIntegration  MeetingIntegration?
+  attachments         Attachment[]
+  notes               String?    // Markdown supported
+  agendaItems         AgendaItem[]
+  comments            Comment[]
+  tags               String[]
+  isPrivate          Boolean    @default(false)
+  category           String?
+  notifyChanges      Boolean    @default(true)
+
+  // Keep existing indexes
+  @@index([startTime, endTime])
+  @@index([userId, startTime])
+
+  // Add new indexes
+  @@index([priority, startTime])
+  @@index([tags])
 }
 ```
 
-### Calendar Account Model (New)
+## Implementation Notes
 
-```prisma
-model calendarAccount {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  user          user     @relation(fields: [userId], references: [id])
-  userId        String   @db.ObjectId
-  provider      String   // google, outlook
-  accountEmail  String
-  accessToken   String
-  refreshToken  String
-  expiry        DateTime
-  calendarIds   String[] // List of calendar IDs from the provider
-  isPrimary     Boolean  @default(false)
-  lastSynced    DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-```
+1. Database Migration Steps:
 
-### Reminder Model (New)
+   - Create backup of existing data
+   - Add new fields with null/default values
+   - Update indexes
+   - Verify data integrity
 
-```prisma
-model reminder {
-  id              String        @id @default(auto()) @map("_id") @db.ObjectId
-  event           calendarEvent @relation(fields: [eventId], references: [id])
-  eventId         String        @db.ObjectId
-  reminderType    String        // email, push, both
-  minutesBefore   Int
-  status          String        @default("pending") // pending, sent, failed
-  createdAt       DateTime      @default(now())
-}
-```
+2. Data Validation Rules:
 
-### Availability Model (New)
+   - Maximum file size: 10MB per attachment
+   - Maximum attachments per event: 10
+   - Maximum comment length: 1000 characters
+   - Maximum agenda items: 20 per event
+   - Valid priority values: "low", "medium", "high"
 
-```prisma
-model availability {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  user        user     @relation(fields: [userId], references: [id])
-  userId      String   @db.ObjectId
-  dayOfWeek   Int      // 0-6 (Sunday-Saturday)
-  startTime   String   // HH:mm format
-  endTime     String   // HH:mm format
-  isAvailable Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-```
+3. Performance Considerations:
 
-## Key Design Decisions
+   - Index on frequently queried fields
+   - Consider partitioning for large datasets
+   - Implement caching for attachment metadata
+   - Monitor query performance on new fields
 
-1. **User Integration**
+4. Security Measures:
+   - Validate file types before upload
+   - Sanitize markdown input
+   - Implement role-based access for private events
+   - Encrypt sensitive meeting details
 
-   - Extended existing user model with calendar-related relations
-   - Maintains backward compatibility with existing features
-
-2. **Calendar Events**
-
-   - Comprehensive event model supporting both internal and external calendars
-   - Flexible recurrence handling through JSON field
-   - External IDs mapping for synchronization
-
-3. **Calendar Integration**
-
-   - Secure storage of OAuth tokens
-   - Support for multiple calendar providers per user
-   - Tracking of sync status and calendar IDs
-
-4. **Availability Management**
-
-   - Weekly schedule configuration
-   - Granular control over available time slots
-   - Foundation for AI-powered scheduling
-
-5. **Reminder System**
-   - Flexible reminder types
-   - Status tracking for delivery
-   - Multiple reminders per event
-
-## Optimization Considerations
-
-1. **Indexes**
-
-   - User email for quick lookups
-   - Event start/end times for efficient queries
-   - External IDs for sync operations
-
-2. **Denormalization**
-
-   - Stored attendee information in event JSON
-   - Cached external calendar IDs
-
-3. **Performance**
-   - Optimized date/time queries
-   - Efficient recurring event expansion
-   - Smart sync strategies
-
-## Migration Strategy
-
-1. **Phase 1**
-
-   - Create new models while preserving existing ones
-   - Set up indexes for optimal performance
-
-2. **Phase 2**
-
-   - Add OAuth integration
-   - Implement calendar sync logic
-
-3. **Phase 3**
-   - Enable smart scheduling features
-   - Roll out reminder system
+This schema update provides the foundation for implementing the enhanced event features while maintaining compatibility with existing functionality.

@@ -1,47 +1,42 @@
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
+import { CalendarEventWithIncludes } from "./prisma-types";
 
-// User Props types
-export interface userCreateProps {
-  email: string;
-  first_name: string;
-  last_name: string;
-  profile_image_url: string;
-  user_id: string;
+// File Upload types
+export interface UploadedFile {
+  name: string;
+  size: number;
+  type: string;
+  arrayBuffer(): Promise<ArrayBuffer>;
 }
 
-// Using the same interface for update since it has the same properties
-export type userUpdateProps = userCreateProps;
-
-// Type for serializable recurrence rule
-export interface RecurrenceRule {
-  freq: string;
-  interval?: number;
-  until?: string; // ISO date string
-  count?: number;
-  byDay?: string[];
-  byMonth?: number[];
-  byMonthDay?: number[];
+export interface EventFormDataAttachment {
+  name: string;
+  file: File | UploadedFile;
 }
 
-// ExternalIds type
-export interface ExternalIds {
-  googleEventId?: string | null;
-  outlookEventId?: string | null;
-  calendarId?: string | null;
-  calendarName?: string | null;
+export interface Attachment {
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  url: string;
+  uploadedAt: Date;
 }
 
-// Attendee type
-export interface Attendee {
-  email: string;
-  name?: string;
-  response?: string;
+export interface MeetingIntegration {
+  provider: string;
+  meetingUrl: string;
+  meetingId?: string;
+  password?: string;
+  settings?: Record<string, any>;
 }
 
-// Base calendar event interface
+// Event Priority Type
+export type EventPriority = "low" | "medium" | "high";
+
+// Base Types
 export interface BaseCalendarEvent {
   id: string;
+  userId: string;
   title: string;
   description: string | null;
   location: string | null;
@@ -49,29 +44,78 @@ export interface BaseCalendarEvent {
   endTime: Date;
   isAllDay: boolean;
   status: string;
-}
-
-// Full calendar event type for Prisma
-export interface CalendarEventData extends BaseCalendarEvent {
-  userId: string;
   recurrence: RecurrenceRule | null;
   externalIds: ExternalIds | null;
   attendees: Attendee[];
-  reminders?: {
-    id: string;
-    reminderType: string;
-    minutesBefore: number;
-    status: string;
-  }[];
-  createdAt?: Date;
-  updatedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  reminders: Reminder[];
 }
 
-// Zod schemas
+export interface RecurrenceRule {
+  freq: string;
+  interval?: number;
+  until?: string;
+  count?: number;
+  byDay?: string[];
+  byMonth?: number[];
+  byMonthDay?: number[];
+}
+
+export interface ExternalIds {
+  googleEventId?: string | null;
+  outlookEventId?: string | null;
+  calendarId?: string | null;
+  calendarName?: string | null;
+}
+
+export interface Attendee {
+  email: string;
+  name?: string | null;
+  response?: string | null;
+}
+
+export interface Reminder {
+  id: string;
+  eventId: string;
+  reminderType: string;
+  minutesBefore: number;
+  status: string;
+  createdAt: Date;
+}
+
+// Enhanced event features
+export interface EnhancedEventFeatures {
+  colorCode?: string | null;
+  priority?: EventPriority | null;
+  meetingIntegration?: MeetingIntegration | null;
+  attachments?: Attachment[];
+  notes?: string | null;
+  agendaItems?: {
+    title: string;
+    duration?: number | null;
+    presenter?: string | null;
+    notes?: string | null;
+    status: string;
+  }[];
+  comments?: {
+    id: string;
+    userId: string;
+    content: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }[];
+  tags?: string[];
+  isPrivate?: boolean;
+  category?: string | null;
+  notifyChanges?: boolean;
+}
+
+// Zod Schemas
 export const RecurrenceRuleSchema = z.object({
   freq: z.string(),
   interval: z.number().optional(),
-  until: z.string().optional(), // ISO date string
+  until: z.string().optional(),
   count: z.number().optional(),
   byDay: z.array(z.string()).optional(),
   byMonth: z.array(z.number()).optional(),
@@ -88,13 +132,14 @@ export const ExternalIdsSchema = z
   .nullable();
 
 export const AttendeeSchema = z.object({
-  email: z.string(),
-  name: z.string().optional(),
-  response: z.string().optional(),
+  email: z.string().email(),
+  name: z.string().nullable().optional(),
+  response: z.string().nullable().optional(),
 });
 
 export const CalendarEventSchema = z.object({
   id: z.string().optional(),
+  userId: z.string(),
   title: z.string().min(1, "Title is required"),
   description: z.string().nullable(),
   location: z.string().nullable(),
@@ -102,7 +147,6 @@ export const CalendarEventSchema = z.object({
   endTime: z.date(),
   isAllDay: z.boolean().default(false),
   status: z.string().default("confirmed"),
-  userId: z.string(),
   recurrence: z.union([RecurrenceRuleSchema, z.null()]),
   externalIds: ExternalIdsSchema,
   attendees: z.array(AttendeeSchema).optional(),
@@ -110,10 +154,7 @@ export const CalendarEventSchema = z.object({
   updatedAt: z.date().optional(),
 });
 
-export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
-
-export type CalendarView = "dayGridMonth" | "timeGridWeek" | "timeGridDay";
-
+// Form schema with enhanced features
 export const EventFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
@@ -123,25 +164,32 @@ export const EventFormSchema = z.object({
   startTime: z.string().optional(),
   endTime: z.string().optional(),
   isAllDay: z.boolean().default(false),
+  // Enhanced features
+  colorCode: z.string().nullable().optional(),
+  priority: z.enum(["low", "medium", "high"]).nullable().optional(),
+  meetingType: z.enum(["none", "google_meet", "zoom"]).default("none"),
+  attachments: z.array(z.any()).optional(),
+  notes: z.string().nullable().optional(),
+  agendaItems: z
+    .array(
+      z.object({
+        title: z.string(),
+        duration: z.number().nullable().optional(),
+        presenter: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+        status: z.string(),
+      })
+    )
+    .optional(),
+  tags: z.array(z.string()).optional(),
+  isPrivate: z.boolean().optional(),
+  category: z.string().nullable().optional(),
+  notifyChanges: z.boolean().optional(),
 });
 
+export type CalendarEvent = BaseCalendarEvent & Partial<EnhancedEventFeatures>;
 export type EventFormData = z.infer<typeof EventFormSchema>;
-
-// Calendar Provider Types
-export type CalendarProvider = "google" | "outlook";
-
-export interface CalendarAccount {
-  id: string;
-  userId: string;
-  provider: CalendarProvider;
-  accountEmail: string;
-  accessToken: string;
-  refreshToken: string;
-  expiry: Date;
-  calendarIds: string[];
-  isPrimary: boolean;
-  lastSynced?: Date;
-}
+export type CalendarView = "dayGridMonth" | "timeGridWeek" | "timeGridDay";
 
 // Google Calendar specific event type
 export interface GoogleCalendarEvent extends BaseCalendarEvent {
@@ -153,10 +201,8 @@ export interface GoogleCalendarEvent extends BaseCalendarEvent {
   };
 }
 
-// Type for events returned from the database
-export type CalendarEventWithReminders = Prisma.calendarEventGetPayload<{
-  include: { reminders: true };
-}>;
+// Event with reminders from database
+export type CalendarEventWithReminders = CalendarEventWithIncludes;
 
 // Combined type for all calendar events
 export type CalendarEventType =

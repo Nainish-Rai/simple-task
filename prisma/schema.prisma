@@ -100,6 +100,38 @@ type Attendee {
   response  String? // "accepted", "declined", "tentative", "needsAction"
 }
 
+type Attachment {
+  fileName    String
+  fileSize    Int
+  fileType    String
+  url         String
+  uploadedAt  DateTime
+}
+
+type AgendaItem {
+  title       String
+  duration    Int?      // in minutes
+  presenter   String?
+  notes       String?
+  status      String    // "pending", "completed", "skipped"
+}
+
+type Comment {
+  id          String
+  userId      String
+  content     String
+  createdAt   DateTime
+  updatedAt   DateTime
+}
+
+type MeetingIntegration {
+  provider    String    // "google_meet", "zoom"
+  meetingUrl  String
+  meetingId   String?
+  password    String?
+  settings    Json?
+}
+
 model calendarEvent {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   user        user      @relation(fields: [userId], references: [id])
@@ -118,8 +150,24 @@ model calendarEvent {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  // New fields
+  colorCode           String?
+  priority            String?    @default("medium")  // "low", "medium", "high"
+  meetingIntegration  MeetingIntegration?
+  attachments         Attachment[]
+  notes               String?    // Markdown supported
+  agendaItems         AgendaItem[]
+  comments            Comment[]
+  tags               String[]
+  isPrivate          Boolean    @default(false)
+  category           String?
+  notifyChanges      Boolean    @default(true)
+
+  // Indexes
   @@index([startTime, endTime])
   @@index([userId, startTime])
+  @@index([priority, startTime])
+  @@index([tags])
 }
 
 model calendarAccount {
