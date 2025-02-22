@@ -16,10 +16,10 @@ interface EventDialogProps {
   isOpen: boolean;
   onClose: () => void;
   mode: "create" | "edit";
-  initialData?: any; // We'll type this properly when we have the event type
+  initialData?: any;
   onSubmit: (data: EventFormData) => Promise<void>;
   onDelete?: () => Promise<void>;
-  isLoading?: boolean; // New prop for loading state
+  isLoading?: boolean;
 }
 
 export function EventDialog({
@@ -51,7 +51,7 @@ export function EventDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-[900px] w-[90vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {mode === "create" ? "Create New Event" : "Edit Event"}
