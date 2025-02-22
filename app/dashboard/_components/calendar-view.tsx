@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -19,6 +19,33 @@ import {
   useDeleteEvent,
 } from "@/utils/hook/useCalendar";
 
+// Colors cache to prevent recalculation
+const colorCache = new Map<string, { background: string; border: string }>();
+
+// Generate pastel color based on event title
+const generatePastelColor = (str: string) => {
+  if (colorCache.has(str)) {
+    return colorCache.get(str)!;
+  }
+
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  const h = hash % 360;
+  const s = 65 + (hash % 20);
+  const l = 85 + (hash % 10);
+
+  const colors = {
+    background: `hsl(${h}, ${s}%, ${l}%)`,
+    border: `hsl(${h}, ${s}%, ${l - 15}%)`,
+  };
+
+  colorCache.set(str, colors);
+  return colors;
+};
+
 interface CalendarViewProps {
   events: CalendarEventType[];
   isLoading?: boolean;
@@ -33,7 +60,6 @@ export function CalendarView({
   >("dayGridMonth");
 
   const calendarRef = useRef<FullCalendar | null>(null);
-
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEventType | null>(
@@ -47,43 +73,40 @@ export function CalendarView({
 
   const router = useRouter();
 
-  // Use TanStack Query mutations
   const createEventMutation = useCreateEvent();
   const updateEventMutation = useUpdateEvent();
   const deleteEventMutation = useDeleteEvent();
 
-  // Helper function to get calendar name
-  const getCalendarName = (event: CalendarEventType): string => {
-    if ("externalIds" in event && event.externalIds?.calendarName) {
-      return event.externalIds.calendarName;
-    }
-    return "Local Calendar";
-  };
+  // Memoized calendar events transformation
+  const calendarEvents = useMemo(
+    () =>
+      events.map((event) => {
+        const isGoogleEvent =
+          "externalIds" in event && event.externalIds?.googleEventId;
+        return {
+          id: event.id,
+          title: event.title,
+          start: event.startTime,
+          end: event.endTime,
+          allDay: event.isAllDay,
+          extendedProps: {
+            description: event.description,
+            location: event.location,
+            status: event.status,
+            source: isGoogleEvent ? "google" : "local",
+            googleEventId: isGoogleEvent
+              ? event.externalIds?.googleEventId
+              : null,
+            calendarName: isGoogleEvent
+              ? event.externalIds?.calendarName
+              : "Local Calendar",
+          },
+        };
+      }),
+    [events]
+  );
 
-  // Transform events to FullCalendar format
-  const calendarEvents = events.map((event) => {
-    const isGoogleEvent =
-      "externalIds" in event && event.externalIds?.googleEventId;
-    return {
-      id: event.id,
-      title: event.title,
-      start: event.startTime,
-      end: event.endTime,
-      allDay: event.isAllDay,
-      extendedProps: {
-        description: event.description,
-        location: event.location,
-        status: event.status,
-        source: isGoogleEvent ? "google" : "local",
-        googleEventId: isGoogleEvent ? event.externalIds?.googleEventId : null,
-        calendarName: isGoogleEvent
-          ? event.externalIds?.calendarName
-          : "Local Calendar",
-      },
-    };
-  });
-
-  const handleDateSelect = (selectInfo: DateSelectArg) => {
+  const handleDateSelect = useCallback((selectInfo: DateSelectArg) => {
     setSelectedDates({
       start: selectInfo.start,
       end: selectInfo.end,
@@ -91,45 +114,57 @@ export function CalendarView({
     });
     setDialogMode("create");
     setDialogOpen(true);
-  };
+  }, []);
 
-  const handleEventClick = (clickInfo: EventClickArg) => {
-    const event = events.find((e) => e.id === clickInfo.event.id);
-    if (event) {
-      setSelectedEvent(event);
-      setDialogMode("edit");
-      setDialogOpen(true);
-    }
-  };
+  const handleEventClick = useCallback(
+    (clickInfo: EventClickArg) => {
+      const event = events.find((e) => e.id === clickInfo.event.id);
+      if (event) {
+        setSelectedEvent(event);
+        setDialogMode("edit");
+        setDialogOpen(true);
+      }
+    },
+    [events]
+  );
 
-  const handleCreateNewEvent = () => {
+  const handleCreateNewEvent = useCallback(() => {
     setSelectedEvent(null);
     setSelectedDates(null);
     setDialogMode("create");
     setDialogOpen(true);
-  };
+  }, []);
 
-  const handleEventSubmit = async (data: EventFormData) => {
-    try {
-      if (dialogMode === "create") {
-        await createEventMutation.mutateAsync(data);
-        toast.success("Event created successfully");
-      } else if (dialogMode === "edit" && selectedEvent) {
-        await updateEventMutation.mutateAsync({
-          eventId: selectedEvent.id,
-          data,
-        });
-        toast.success("Event updated successfully");
+  const handleEventSubmit = useCallback(
+    async (data: EventFormData) => {
+      try {
+        if (dialogMode === "create") {
+          await createEventMutation.mutateAsync(data);
+          toast.success("Event created successfully");
+        } else if (dialogMode === "edit" && selectedEvent) {
+          await updateEventMutation.mutateAsync({
+            eventId: selectedEvent.id,
+            data,
+          });
+          toast.success("Event updated successfully");
+        }
+        router.refresh();
+        setDialogOpen(false);
+      } catch (error) {
+        console.error("Failed to save event:", error);
+        toast.error("Failed to save event");
       }
-      router.refresh();
-      setDialogOpen(false);
-    } catch (error) {
-      console.error("Failed to save event:", error);
-      toast.error("Failed to save event");
-    }
-  };
+    },
+    [
+      dialogMode,
+      selectedEvent,
+      createEventMutation,
+      updateEventMutation,
+      router,
+    ]
+  );
 
-  const handleEventDelete = async () => {
+  const handleEventDelete = useCallback(async () => {
     if (!selectedEvent) return;
 
     try {
@@ -141,7 +176,33 @@ export function CalendarView({
       console.error("Failed to delete event:", error);
       toast.error("Failed to delete event");
     }
-  };
+  }, [selectedEvent, deleteEventMutation, router]);
+
+  // Memoized event content renderer
+  const renderEventContent = useCallback((eventInfo: any) => {
+    const title = eventInfo.event.title;
+    const room = eventInfo.event.extendedProps.location || "";
+    const colors = generatePastelColor(title);
+
+    return {
+      html: `
+        <div class="fc-event-main-frame" style="background-color: ${
+          colors.background
+        }; border-left: 3px solid ${colors.border}; border-radius: 4px;">
+          <div class="fc-event-title-container">
+            <div class="fc-event-title fc-sticky" style="color: #4b5563; padding: 4px 6px;">
+              ${title}
+              ${
+                room
+                  ? `<div style="font-size: 0.75rem; opacity: 0.7;">${room}</div>`
+                  : ""
+              }
+            </div>
+          </div>
+        </div>
+      `,
+    };
+  }, []);
 
   return (
     <Card className="p-6 flex-1">
@@ -225,18 +286,14 @@ export function CalendarView({
           eventClick={handleEventClick}
           height="auto"
           contentHeight="auto"
-          views={{
-            timeGrid: {
-              nowIndicator: true,
-              slotMinTime: "08:00:00",
-              slotMaxTime: "20:00:00",
-              slotDuration: "00:30:00",
-              slotLabelFormat: {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: false,
-              },
-            },
+          slotMinTime="08:00:00"
+          slotMaxTime="20:00:00"
+          slotDuration="00:30:00"
+          nowIndicator={true}
+          slotLabelFormat={{
+            hour: "2-digit" as const,
+            minute: "2-digit" as const,
+            hour12: false,
           }}
           slotLabelClassNames="text-xs text-gray-500"
           dayHeaderClassNames="text-md font-medium"
@@ -251,50 +308,7 @@ export function CalendarView({
                 | "timeGridDay"
             );
           }}
-          eventContent={(eventInfo) => {
-            const title = eventInfo.event.title;
-            const room = eventInfo.event.extendedProps.location || "";
-
-            // Generate pastel color based on event title
-            const generatePastelColor = (str: string) => {
-              let hash = 0;
-              for (let i = 0; i < str.length; i++) {
-                hash = str.charCodeAt(i) + ((hash << 5) - hash);
-              }
-
-              const h = hash % 360;
-              const s = 65 + (hash % 20);
-              const l = 85 + (hash % 10);
-
-              return {
-                background: `hsl(${h}, ${s}%, ${l}%)`,
-                border: `hsl(${h}, ${s}%, ${l - 15}%)`,
-              };
-            };
-
-            const colors = generatePastelColor(title);
-
-            return {
-              html: `
-                <div class="fc-event-main-frame" style="background-color: ${
-                  colors.background
-                }; border-left: 3px solid ${
-                colors.border
-              }; border-radius: 4px;">
-                  <div class="fc-event-title-container">
-                    <div class="fc-event-title fc-sticky" style="color: #4b5563; padding: 4px 6px;">
-                      ${title}
-                      ${
-                        room
-                          ? `<div style="font-size: 0.75rem; opacity: 0.7;">${room}</div>`
-                          : ""
-                      }
-                    </div>
-                  </div>
-                </div>
-              `,
-            };
-          }}
+          eventContent={renderEventContent}
         />
       </div>
 

@@ -16,7 +16,14 @@ export const calendarApi = {
         end: end.toISOString(),
       },
     });
-    return response.data;
+    // Convert string dates back to Date objects
+    return response.data.map((event: CalendarEventType) => ({
+      ...event,
+      startTime: new Date(event.startTime),
+      endTime: new Date(event.endTime),
+      createdAt: new Date(event.createdAt),
+      updatedAt: new Date(event.updatedAt),
+    }));
   },
 
   createEvent: async (data: EventFormData) => {

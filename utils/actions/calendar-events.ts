@@ -23,7 +23,24 @@ import { FileUploadService } from "../services/file-upload";
 import { MeetingService } from "../services/meeting-service";
 import { validateCalendarSync } from "../services/sync-validation";
 import { calendar_v3 } from "googleapis";
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
 
+const EVENTS_PER_PAGE = 50;
+const CACHE_TTL = 60; // 1 minute cache
+
+// Cache helpers
+const getUser = cache(async (userId: string) => {
+  return prisma.user.findUnique({
+    where: { user_id: userId },
+  });
+});
+
+const getCachedGoogleCalendarService = cache(async () => {
+  return getGoogleCalendarService();
+});
+
+// Types
 type EnhancedMeetingData = {
   provider: string;
   meetingUrl: string;
@@ -34,6 +51,7 @@ type EnhancedMeetingData = {
 
 type EventMeetingIntegration = MeetingIntegration & EnhancedMeetingData;
 
+// Utility functions
 function createMeetingIntegration(
   result: {
     provider: string;
@@ -54,175 +72,181 @@ function createMeetingIntegration(
   } as EventMeetingIntegration;
 }
 
+const transformGoogleEvent = cache(
+  (
+    event: calendar_v3.Schema$Event & {
+      calendarId?: string;
+      calendarName?: string;
+    },
+    userId: string
+  ): EnhancedEvent => ({
+    id: event.id!,
+    userId,
+    title: event.summary || "Untitled Event",
+    description: event.description ?? null,
+    location: event.location ?? null,
+    startTime: new Date(
+      event.start?.dateTime || event.start?.date || new Date()
+    ),
+    endTime: new Date(event.end?.dateTime || event.end?.date || new Date()),
+    isAllDay: Boolean(event.start?.date),
+    status: event.status || "confirmed",
+    externalIds: {
+      googleEventId: event.id!,
+      outlookEventId: null,
+      calendarId: event.calendarId ?? "primary",
+      calendarName: event.calendarName ?? "Primary Calendar",
+    },
+    recurrence: null,
+    attendees:
+      event.attendees?.map((a) => ({
+        email: a.email!,
+        name: a.displayName ?? null,
+        response: a.responseStatus ?? null,
+      })) || [],
+    createdAt: new Date(event.created || new Date()),
+    updatedAt: new Date(event.updated || new Date()),
+    reminders: [
+      {
+        id: `temp-${event.id}`,
+        eventId: event.id!,
+        reminderType: "notification",
+        minutesBefore: 30,
+        status: "pending",
+        createdAt: new Date(),
+      },
+    ],
+    colorCode: event.colorId ?? null,
+    priority: "medium" as EventPriority,
+    meetingIntegration:
+      event.conferenceData && event.conferenceData.entryPoints?.[0]?.uri
+        ? createMeetingIntegration({
+            provider: "google_meet",
+            meetingUrl: event.conferenceData.entryPoints[0].uri,
+            ...(event.conferenceData.conferenceId && {
+              meetingId: event.conferenceData.conferenceId,
+            }),
+          })
+        : null,
+    attachments: [],
+    notes: null,
+    agendaItems: [],
+    comments: [],
+    tags: [],
+    isPrivate: false,
+    category: null,
+    notifyChanges: true,
+  })
+);
+
+// Cached implementation
+const getCalendarEventsImpl = unstable_cache(
+  async (
+    userId: string,
+    start: Date,
+    end: Date,
+    page = 1
+  ): Promise<EnhancedEvent[]> => {
+    const user = await getUser(userId);
+    if (!user) throw new Error("User not found");
+
+    const skip = (page - 1) * EVENTS_PER_PAGE;
+
+    // Parallel fetch local and Google events
+    const [localEvents, googleCalendar] = await Promise.all([
+      prisma.calendarEvent.findMany({
+        where: {
+          userId: user.id,
+          startTime: { gte: start },
+          endTime: { lte: end },
+        },
+        include: {
+          reminders: true,
+        },
+        orderBy: {
+          startTime: "asc",
+        },
+        skip,
+        take: EVENTS_PER_PAGE,
+      }),
+      getCachedGoogleCalendarService(),
+    ]);
+
+    try {
+      const googleEvents = await googleCalendar.listEvents(start, end);
+      const convertedGoogleEvents = googleEvents.map((event) =>
+        transformGoogleEvent(event, user.id)
+      );
+
+      const enhancedLocalEvents: EnhancedEvent[] = localEvents.map((event) => ({
+        ...event,
+        colorCode: null,
+        priority: "medium" as EventPriority,
+        meetingIntegration: null,
+        attachments: [],
+        notes: null,
+        agendaItems: [],
+        comments: [],
+        tags: [],
+        isPrivate: false,
+        category: null,
+        notifyChanges: true,
+      }));
+
+      const localEventsWithGoogleId = new Map(
+        localEvents
+          .filter((event) => event.externalIds?.googleEventId)
+          .map((event) => [event.externalIds!.googleEventId!, event])
+      );
+
+      const uniqueGoogleEvents = convertedGoogleEvents.filter(
+        (googleEvent) => !localEventsWithGoogleId.has(googleEvent.id)
+      );
+
+      const allEvents = [...enhancedLocalEvents, ...uniqueGoogleEvents];
+
+      return allEvents;
+    } catch (error) {
+      console.error("Failed to fetch Google Calendar events:", error);
+      return localEvents.map((event) => ({
+        ...event,
+        colorCode: null,
+        priority: "medium" as EventPriority,
+        meetingIntegration: null,
+        attachments: [],
+        notes: null,
+        agendaItems: [],
+        comments: [],
+        tags: [],
+        isPrivate: false,
+        category: null,
+        notifyChanges: true,
+      }));
+    }
+  },
+  ["calendar-events"],
+  { revalidate: CACHE_TTL }
+);
+
+// Public API
 export async function getCalendarEvents(
   start: Date,
-  end: Date
+  end: Date,
+  page = 1
 ): Promise<EnhancedEvent[]> {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await prisma.user.findUnique({
-    where: { user_id: userId },
-  });
-
-  if (!user) throw new Error("User not found");
-
-  const localEvents = await prisma.calendarEvent.findMany({
-    where: {
-      userId: user.id,
-      startTime: { gte: start },
-      endTime: { lte: end },
-    },
-    include: {
-      reminders: true,
-    },
-    orderBy: {
-      startTime: "asc",
-    },
-  });
-
-  try {
-    const googleCalendar = await getGoogleCalendarService();
-    const googleEvents = await googleCalendar.listEvents(start, end);
-
-    const convertedGoogleEvents: EnhancedEvent[] = googleEvents.map(
-      (
-        event: calendar_v3.Schema$Event & {
-          calendarId?: string;
-          calendarName?: string;
-        }
-      ) => {
-        const eventData = {
-          id: event.id!,
-          userId: user.id,
-          title: event.summary || "Untitled Event",
-          description: event.description ?? null,
-          location: event.location ?? null,
-          startTime: new Date(
-            event.start?.dateTime || event.start?.date || new Date()
-          ),
-          endTime: new Date(
-            event.end?.dateTime || event.end?.date || new Date()
-          ),
-          isAllDay: Boolean(event.start?.date),
-          status: event.status || "confirmed",
-          externalIds: {
-            googleEventId: event.id!,
-            outlookEventId: null,
-            calendarId: event.calendarId ?? "primary",
-            calendarName: event.calendarName ?? "Primary Calendar",
-          },
-          recurrence: null,
-          attendees:
-            event.attendees?.map((a) => ({
-              email: a.email!,
-              name: a.displayName ?? null,
-              response: a.responseStatus ?? null,
-            })) || [],
-          createdAt: new Date(event.created || new Date()),
-          updatedAt: new Date(event.updated || new Date()),
-          reminders: [
-            {
-              id: `temp-${event.id}`,
-              eventId: event.id!,
-              reminderType: "notification",
-              minutesBefore: 30,
-              status: "pending",
-              createdAt: new Date(),
-            },
-          ],
-          colorCode: event.colorId ?? null,
-          priority: "medium" as EventPriority,
-          meetingIntegration:
-            event.conferenceData && event.conferenceData.entryPoints?.[0]?.uri
-              ? createMeetingIntegration({
-                  provider: "google_meet",
-                  meetingUrl: event.conferenceData.entryPoints[0].uri,
-                  ...(event.conferenceData.conferenceId && {
-                    meetingId: event.conferenceData.conferenceId,
-                  }),
-                })
-              : null,
-          attachments: [],
-          notes: null,
-          agendaItems: [],
-          comments: [],
-          tags: [],
-          isPrivate: false,
-          category: null,
-          notifyChanges: true,
-        };
-
-        return eventData as EnhancedEvent;
-      }
-    );
-
-    const enhancedLocalEvents: EnhancedEvent[] = localEvents.map((event) => ({
-      ...event,
-      colorCode: null,
-      priority: "medium" as EventPriority,
-      meetingIntegration: null,
-      attachments: [],
-      notes: null,
-      agendaItems: [],
-      comments: [],
-      tags: [],
-      isPrivate: false,
-      category: null,
-      notifyChanges: true,
-    }));
-
-    const localEventsWithGoogleId = new Map(
-      localEvents
-        .filter((event) => event.externalIds?.googleEventId)
-        .map((event) => [event.externalIds!.googleEventId!, event])
-    );
-
-    const uniqueGoogleEvents = convertedGoogleEvents.filter(
-      (googleEvent) => !localEventsWithGoogleId.has(googleEvent.id)
-    );
-
-    const allEvents = [...enhancedLocalEvents, ...uniqueGoogleEvents];
-
-    const { status } = await validateCalendarSync(userId, start, end, {
-      fixDiscrepancies: true,
-      logResults: true,
-    });
-
-    if (status === "out_of_sync") {
-      console.warn("Calendar sync validation detected and fixed discrepancies");
-    }
-
-    return allEvents;
-  } catch (error) {
-    console.error("Failed to fetch Google Calendar events:", error);
-    return localEvents.map((event) => ({
-      ...event,
-      colorCode: null,
-      priority: "medium" as EventPriority,
-      meetingIntegration: null,
-      attachments: [],
-      notes: null,
-      agendaItems: [],
-      comments: [],
-      tags: [],
-      isPrivate: false,
-      category: null,
-      notifyChanges: true,
-    }));
-  }
+  return getCalendarEventsImpl(userId, start, end, page);
 }
 
 export async function createCalendarEvent(
   data: EventFormData
 ): Promise<EnhancedEvent> {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await prisma.user.findUnique({
-    where: { user_id: userId },
-  });
-
+  const user = await getUser(userId);
   if (!user) throw new Error("User not found");
 
   const startTime = new Date(data.startDate);
@@ -310,7 +334,7 @@ export async function createCalendarEvent(
 
   // Sync with Google Calendar
   try {
-    const googleCalendar = await getGoogleCalendarService();
+    const googleCalendar = await getCachedGoogleCalendarService();
     const googleEvent = await googleCalendar.createEvent({
       title: data.title,
       description: data.description || null,
@@ -349,13 +373,10 @@ export async function updateCalendarEvent(
   eventId: string,
   data: EventFormData
 ): Promise<EnhancedEvent> {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await prisma.user.findUnique({
-    where: { user_id: userId },
-  });
-
+  const user = await getUser(userId);
   if (!user) throw new Error("User not found");
 
   // Get existing event
@@ -454,7 +475,7 @@ export async function updateCalendarEvent(
   // Update Google Calendar if connected
   if (existingEvent.externalIds?.googleEventId) {
     try {
-      const googleCalendar = await getGoogleCalendarService();
+      const googleCalendar = await getCachedGoogleCalendarService();
       await googleCalendar.updateEvent(
         existingEvent.externalIds.googleEventId,
         {
@@ -475,13 +496,10 @@ export async function updateCalendarEvent(
 }
 
 export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
 
-  const user = await prisma.user.findUnique({
-    where: { user_id: userId },
-  });
-
+  const user = await getUser(userId);
   if (!user) throw new Error("User not found");
 
   const existingEvent = await prisma.calendarEvent.findFirst({
@@ -499,7 +517,7 @@ export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
   // Delete Google Calendar event if connected
   if (existingEvent.externalIds?.googleEventId) {
     try {
-      const googleCalendar = await getGoogleCalendarService();
+      const googleCalendar = await getCachedGoogleCalendarService();
       await googleCalendar.deleteEvent(existingEvent.externalIds.googleEventId);
     } catch (error) {
       console.error("Failed to delete Google Calendar event:", error);
