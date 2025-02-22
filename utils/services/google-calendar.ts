@@ -15,6 +15,8 @@ export interface GoogleCalendarEventInput {
   startTime: Date;
   endTime: Date;
   isAllDay: boolean;
+  enableMeet?: boolean;
+  attendees?: string[];
 }
 
 export class GoogleCalendarService {
@@ -66,19 +68,44 @@ export class GoogleCalendarService {
 
   async createEvent(event: GoogleCalendarEventInput) {
     try {
+      const requestBody: calendar_v3.Schema$Event = {
+        summary: event.title,
+        description: event.description || undefined,
+        location: event.location || undefined,
+        start: event.isAllDay
+          ? { date: event.startTime.toISOString().split("T")[0] }
+          : {
+              dateTime: event.startTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            },
+        end: event.isAllDay
+          ? { date: event.endTime.toISOString().split("T")[0] }
+          : {
+              dateTime: event.endTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            },
+        attendees: event.attendees?.map((email) => ({ email })),
+        guestsCanModify: false,
+        guestsCanInviteOthers: false,
+        guestsCanSeeOtherGuests: true,
+      };
+
+      // Add Google Meet if enabled
+      if (event.enableMeet) {
+        requestBody.conferenceData = {
+          createRequest: {
+            requestId: `${Date.now()}-${Math.random()
+              .toString(36)
+              .substr(2, 9)}`,
+            conferenceSolutionKey: { type: "hangoutsMeet" },
+          },
+        };
+      }
+
       const { data } = await this.calendar.events.insert({
         calendarId: "primary",
-        requestBody: {
-          summary: event.title,
-          description: event.description || undefined,
-          location: event.location || undefined,
-          start: event.isAllDay
-            ? { date: event.startTime.toISOString().split("T")[0] }
-            : { dateTime: event.startTime.toISOString() },
-          end: event.isAllDay
-            ? { date: event.endTime.toISOString().split("T")[0] }
-            : { dateTime: event.endTime.toISOString() },
-        },
+        conferenceDataVersion: event.enableMeet ? 1 : 0,
+        requestBody,
       });
       return data;
     } catch (error) {
@@ -89,20 +116,45 @@ export class GoogleCalendarService {
 
   async updateEvent(eventId: string, event: GoogleCalendarEventInput) {
     try {
+      const requestBody: calendar_v3.Schema$Event = {
+        summary: event.title,
+        description: event.description || undefined,
+        location: event.location || undefined,
+        start: event.isAllDay
+          ? { date: event.startTime.toISOString().split("T")[0] }
+          : {
+              dateTime: event.startTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            },
+        end: event.isAllDay
+          ? { date: event.endTime.toISOString().split("T")[0] }
+          : {
+              dateTime: event.endTime.toISOString(),
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            },
+        attendees: event.attendees?.map((email) => ({ email })),
+        guestsCanModify: false,
+        guestsCanInviteOthers: false,
+        guestsCanSeeOtherGuests: true,
+      };
+
+      // Add Google Meet if enabled
+      if (event.enableMeet) {
+        requestBody.conferenceData = {
+          createRequest: {
+            requestId: `${Date.now()}-${Math.random()
+              .toString(36)
+              .substr(2, 9)}`,
+            conferenceSolutionKey: { type: "hangoutsMeet" },
+          },
+        };
+      }
+
       const { data } = await this.calendar.events.update({
         calendarId: "primary",
         eventId: eventId,
-        requestBody: {
-          summary: event.title,
-          description: event.description || undefined,
-          location: event.location || undefined,
-          start: event.isAllDay
-            ? { date: event.startTime.toISOString().split("T")[0] }
-            : { dateTime: event.startTime.toISOString() },
-          end: event.isAllDay
-            ? { date: event.endTime.toISOString().split("T")[0] }
-            : { dateTime: event.endTime.toISOString() },
-        },
+        conferenceDataVersion: event.enableMeet ? 1 : 0,
+        requestBody,
       });
       return data;
     } catch (error) {

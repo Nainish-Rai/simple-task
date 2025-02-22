@@ -164,10 +164,12 @@ export const EventFormSchema = z.object({
   startTime: z.string().optional(),
   endTime: z.string().optional(),
   isAllDay: z.boolean().default(false),
-  // Enhanced features
+  // Meeting settings
+  meetingType: z.enum(["none", "google_meet"]).default("none"),
+  attendees: z.array(z.string().email("Invalid email address")).optional(),
+  // Advanced features
   colorCode: z.string().nullable().optional(),
   priority: z.enum(["low", "medium", "high"]).nullable().optional(),
-  meetingType: z.enum(["none", "google_meet", "zoom"]).default("none"),
   attachments: z.array(z.any()).optional(),
   notes: z.string().nullable().optional(),
   agendaItems: z

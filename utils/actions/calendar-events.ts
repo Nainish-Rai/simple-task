@@ -297,15 +297,18 @@ export async function createCalendarEvent(
   const meetingIntegration = await (async () => {
     if (!data.meetingType || data.meetingType === "none") return null;
 
-    const result = await MeetingService.createMeeting(
-      data.meetingType as "google_meet" | "zoom",
-      {
-        title: data.title,
-        startTime,
-        duration: Math.floor((endTime.getTime() - startTime.getTime()) / 60000),
-        description: data.description,
-      }
-    );
+    // Only create meeting if it's Google Meet
+    const result =
+      data.meetingType === "google_meet"
+        ? await MeetingService.createMeeting("google_meet", {
+            title: data.title,
+            startTime,
+            duration: Math.floor(
+              (endTime.getTime() - startTime.getTime()) / 60000
+            ),
+            description: data.description,
+          })
+        : null;
 
     return createMeetingIntegration(result);
   })();
@@ -342,6 +345,8 @@ export async function createCalendarEvent(
       startTime,
       endTime,
       isAllDay: data.isAllDay,
+      enableMeet: data.meetingType === "google_meet",
+      attendees: data.attendees,
     });
 
     if (googleEvent && googleEvent.id) {
@@ -437,15 +442,18 @@ export async function updateCalendarEvent(
   const meetingIntegration = await (async () => {
     if (!data.meetingType || data.meetingType === "none") return null;
 
-    const result = await MeetingService.createMeeting(
-      data.meetingType as "google_meet" | "zoom",
-      {
-        title: data.title,
-        startTime,
-        duration: Math.floor((endTime.getTime() - startTime.getTime()) / 60000),
-        description: data.description,
-      }
-    );
+    // Only create meeting if it's Google Meet
+    const result =
+      data.meetingType === "google_meet"
+        ? await MeetingService.createMeeting("google_meet", {
+            title: data.title,
+            startTime,
+            duration: Math.floor(
+              (endTime.getTime() - startTime.getTime()) / 60000
+            ),
+            description: data.description,
+          })
+        : null;
 
     return createMeetingIntegration(result);
   })();
@@ -485,6 +493,8 @@ export async function updateCalendarEvent(
           startTime,
           endTime,
           isAllDay: data.isAllDay,
+          enableMeet: data.meetingType === "google_meet",
+          attendees: data.attendees,
         }
       );
     } catch (error) {
