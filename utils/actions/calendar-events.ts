@@ -11,6 +11,7 @@ import {
   EventFormDataAttachment,
   EventPriority,
   Reminder,
+  MeetingIntegration,
 } from "../types";
 import {
   EventWithReminders,
@@ -22,6 +23,36 @@ import { FileUploadService } from "../services/file-upload";
 import { MeetingService } from "../services/meeting-service";
 import { validateCalendarSync } from "../services/sync-validation";
 import { calendar_v3 } from "googleapis";
+
+type EnhancedMeetingData = {
+  provider: string;
+  meetingUrl: string;
+  meetingId: string | null;
+  password: string | null;
+  settings: Record<string, any>;
+};
+
+type EventMeetingIntegration = MeetingIntegration & EnhancedMeetingData;
+
+function createMeetingIntegration(
+  result: {
+    provider: string;
+    meetingUrl: string;
+    meetingId?: string;
+    password?: string;
+    settings?: Record<string, any>;
+  } | null
+): EventMeetingIntegration | null {
+  if (!result) return null;
+
+  return {
+    provider: result.provider,
+    meetingUrl: result.meetingUrl,
+    meetingId: result.meetingId ?? null,
+    password: result.password ?? null,
+    settings: result.settings ?? {},
+  } as EventMeetingIntegration;
+}
 
 export async function getCalendarEvents(
   start: Date,
@@ -36,7 +67,6 @@ export async function getCalendarEvents(
 
   if (!user) throw new Error("User not found");
 
-  // Get base event data
   const localEvents = await prisma.calendarEvent.findMany({
     where: {
       userId: user.id,
@@ -62,7 +92,7 @@ export async function getCalendarEvents(
           calendarName?: string;
         }
       ) => {
-        const baseData: EventWithReminders = {
+        const eventData = {
           id: event.id!,
           userId: user.id,
           title: event.summary || "Untitled Event",
@@ -101,19 +131,18 @@ export async function getCalendarEvents(
               createdAt: new Date(),
             },
           ],
-        };
-
-        const enhancedData: Partial<TempEventData> = {
           colorCode: event.colorId ?? null,
           priority: "medium" as EventPriority,
-          meetingIntegration: event.conferenceData
-            ? {
-                provider: "google_meet",
-                meetingUrl: event.conferenceData.entryPoints?.[0]?.uri || "",
-                meetingId: event.conferenceData.conferenceId || undefined,
-                settings: {},
-              }
-            : null,
+          meetingIntegration:
+            event.conferenceData && event.conferenceData.entryPoints?.[0]?.uri
+              ? createMeetingIntegration({
+                  provider: "google_meet",
+                  meetingUrl: event.conferenceData.entryPoints[0].uri,
+                  ...(event.conferenceData.conferenceId && {
+                    meetingId: event.conferenceData.conferenceId,
+                  }),
+                })
+              : null,
           attachments: [],
           notes: null,
           agendaItems: [],
@@ -124,14 +153,24 @@ export async function getCalendarEvents(
           notifyChanges: true,
         };
 
-        const enhancedEvent: EnhancedEvent = {
-          ...baseData,
-          ...enhancedData,
-        };
-
-        return enhancedEvent;
+        return eventData as EnhancedEvent;
       }
     );
+
+    const enhancedLocalEvents: EnhancedEvent[] = localEvents.map((event) => ({
+      ...event,
+      colorCode: null,
+      priority: "medium" as EventPriority,
+      meetingIntegration: null,
+      attachments: [],
+      notes: null,
+      agendaItems: [],
+      comments: [],
+      tags: [],
+      isPrivate: false,
+      category: null,
+      notifyChanges: true,
+    }));
 
     const localEventsWithGoogleId = new Map(
       localEvents
@@ -143,7 +182,7 @@ export async function getCalendarEvents(
       (googleEvent) => !localEventsWithGoogleId.has(googleEvent.id)
     );
 
-    const allEvents = [...localEvents, ...uniqueGoogleEvents];
+    const allEvents = [...enhancedLocalEvents, ...uniqueGoogleEvents];
 
     const { status } = await validateCalendarSync(userId, start, end, {
       fixDiscrepancies: true,
@@ -157,11 +196,26 @@ export async function getCalendarEvents(
     return allEvents;
   } catch (error) {
     console.error("Failed to fetch Google Calendar events:", error);
-    return localEvents;
+    return localEvents.map((event) => ({
+      ...event,
+      colorCode: null,
+      priority: "medium" as EventPriority,
+      meetingIntegration: null,
+      attachments: [],
+      notes: null,
+      agendaItems: [],
+      comments: [],
+      tags: [],
+      isPrivate: false,
+      category: null,
+      notifyChanges: true,
+    }));
   }
 }
 
-export async function createCalendarEvent(data: EventFormData) {
+export async function createCalendarEvent(
+  data: EventFormData
+): Promise<EnhancedEvent> {
   const { userId } = auth();
   if (!userId) throw new Error("Unauthorized");
 
@@ -177,59 +231,49 @@ export async function createCalendarEvent(data: EventFormData) {
   if (!data.isAllDay) {
     const [startHours, startMinutes] = (data.startTime || "00:00").split(":");
     const [endHours, endMinutes] = (data.endTime || "00:00").split(":");
-
     startTime.setHours(parseInt(startHours), parseInt(startMinutes));
     endTime.setHours(parseInt(endHours), parseInt(endMinutes));
   }
 
-  // Prepare base event data
-  const baseData: EventWithReminders = {
-    title: data.title,
-    description: data.description || null,
-    location: data.location || null,
-    startTime,
-    endTime,
-    isAllDay: data.isAllDay,
-    userId: user.id,
-    status: "confirmed",
-    externalIds: null,
-    attendees: [],
-    recurrence: null,
-    reminders: [], // Will be created after the event
-    id: "", // Will be set by the database
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
+  // Create initial event
+  const prismaEvent = await prisma.calendarEvent.create({
+    data: {
+      title: data.title,
+      description: data.description || null,
+      location: data.location || null,
+      startTime,
+      endTime,
+      isAllDay: data.isAllDay,
+      userId: user.id,
+      status: "confirmed",
+      externalIds: null,
+      attendees: [],
+      recurrence: null,
+    },
+    include: {
+      reminders: true,
+    },
+  });
 
-  // Prepare enhanced features data
-  const enhancedData: Partial<TempEventData> = {
-    colorCode: data.colorCode ?? null,
-    priority: data.priority ?? ("medium" as EventPriority),
-    notes: data.notes ?? null,
-    tags: data.tags ?? [],
-    isPrivate: data.isPrivate ?? false,
-    category: data.category ?? null,
-    notifyChanges: data.notifyChanges ?? true,
-    agendaItems: data.agendaItems ?? [],
-    comments: [],
-    attachments: [],
-  };
+  // Process file uploads if any
+  const attachments = data.attachments?.length
+    ? await Promise.all(
+        (data.attachments as EventFormDataAttachment[]).map(
+          async ({ file }) => {
+            if (file instanceof File || "arrayBuffer" in file) {
+              return FileUploadService.uploadFile(file as File, user.id);
+            }
+            return file;
+          }
+        )
+      )
+    : [];
 
-  // Process file uploads
-  if (data.attachments?.length) {
-    enhancedData.attachments = await Promise.all(
-      (data.attachments as EventFormDataAttachment[]).map(async ({ file }) => {
-        if (file instanceof File || "arrayBuffer" in file) {
-          return FileUploadService.uploadFile(file as File, user.id);
-        }
-        return file;
-      })
-    );
-  }
+  // Handle meeting integration
+  const meetingIntegration = await (async () => {
+    if (!data.meetingType || data.meetingType === "none") return null;
 
-  // Set up meeting integration if requested
-  if (data.meetingType && data.meetingType !== "none") {
-    enhancedData.meetingIntegration = await MeetingService.createMeeting(
+    const result = await MeetingService.createMeeting(
       data.meetingType as "google_meet" | "zoom",
       {
         title: data.title,
@@ -238,49 +282,47 @@ export async function createCalendarEvent(data: EventFormData) {
         description: data.description,
       }
     );
-  }
 
-  // Create local event with base data
-  const localEvent = await prisma.calendarEvent.create({
-    data: {
-      title: baseData.title,
-      description: baseData.description,
-      location: baseData.location,
-      startTime: baseData.startTime,
-      endTime: baseData.endTime,
-      isAllDay: baseData.isAllDay,
-      userId: baseData.userId,
-      status: baseData.status,
-      externalIds: baseData.externalIds,
-      attendees: baseData.attendees,
-      recurrence: baseData.recurrence,
-    },
-    include: {
-      reminders: true,
-    },
-  });
+    return createMeetingIntegration(result);
+  })();
 
-  // Return combined event with enhanced features
+  // Create enhanced event with additional features
   const enhancedEvent: EnhancedEvent = {
-    ...localEvent,
-    ...enhancedData,
+    ...prismaEvent,
+    colorCode: data.colorCode ?? null,
+    priority: data.priority ?? "medium",
+    notes: data.notes ?? null,
+    tags: data.tags ?? [],
+    isPrivate: data.isPrivate ?? false,
+    category: data.category ?? null,
+    notifyChanges: data.notifyChanges ?? true,
+    agendaItems: (data.agendaItems ?? []).map((item) => ({
+      title: item.title,
+      duration: item.duration || null,
+      presenter: item.presenter || null,
+      notes: item.notes || null,
+      status: item.status,
+    })),
+    comments: [],
+    attachments,
+    meetingIntegration,
   };
 
-  // Try to sync with Google Calendar
+  // Sync with Google Calendar
   try {
     const googleCalendar = await getGoogleCalendarService();
     const googleEvent = await googleCalendar.createEvent({
-      title: baseData.title,
-      description: baseData.description,
-      location: baseData.location,
-      startTime: baseData.startTime,
-      endTime: baseData.endTime,
-      isAllDay: baseData.isAllDay,
+      title: data.title,
+      description: data.description || null,
+      location: data.location || null,
+      startTime,
+      endTime,
+      isAllDay: data.isAllDay,
     });
 
     if (googleEvent && googleEvent.id) {
       const updatedEvent = await prisma.calendarEvent.update({
-        where: { id: localEvent.id },
+        where: { id: prismaEvent.id },
         data: {
           externalIds: {
             googleEventId: googleEvent.id,
@@ -294,7 +336,6 @@ export async function createCalendarEvent(data: EventFormData) {
         },
       });
 
-      // Update the enhancedEvent with new externalIds
       enhancedEvent.externalIds = updatedEvent.externalIds;
     }
   } catch (error) {
@@ -307,6 +348,132 @@ export async function createCalendarEvent(data: EventFormData) {
 export async function updateCalendarEvent(
   eventId: string,
   data: EventFormData
+): Promise<EnhancedEvent> {
+  const { userId } = auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const user = await prisma.user.findUnique({
+    where: { user_id: userId },
+  });
+
+  if (!user) throw new Error("User not found");
+
+  // Get existing event
+  const existingEvent = await prisma.calendarEvent.findFirst({
+    where: {
+      id: eventId,
+      userId: user.id,
+    },
+    include: {
+      reminders: true,
+    },
+  });
+
+  if (!existingEvent) throw new Error("Event not found");
+
+  const startTime = new Date(data.startDate);
+  const endTime = new Date(data.endDate);
+
+  if (!data.isAllDay) {
+    const [startHours, startMinutes] = (data.startTime || "00:00").split(":");
+    const [endHours, endMinutes] = (data.endTime || "00:00").split(":");
+    startTime.setHours(parseInt(startHours), parseInt(startMinutes));
+    endTime.setHours(parseInt(endHours), parseInt(endMinutes));
+  }
+
+  // Update base event data
+  const updatedEvent = await prisma.calendarEvent.update({
+    where: { id: eventId },
+    data: {
+      title: data.title,
+      description: data.description || null,
+      location: data.location || null,
+      startTime,
+      endTime,
+      isAllDay: data.isAllDay,
+      status: "confirmed",
+    },
+    include: {
+      reminders: true,
+    },
+  });
+
+  // Process file uploads if any
+  const attachments = data.attachments?.length
+    ? await Promise.all(
+        (data.attachments as EventFormDataAttachment[]).map(
+          async ({ file }) => {
+            if (file instanceof File || "arrayBuffer" in file) {
+              return FileUploadService.uploadFile(file as File, user.id);
+            }
+            return file;
+          }
+        )
+      )
+    : [];
+
+  // Handle meeting integration
+  const meetingIntegration = await (async () => {
+    if (!data.meetingType || data.meetingType === "none") return null;
+
+    const result = await MeetingService.createMeeting(
+      data.meetingType as "google_meet" | "zoom",
+      {
+        title: data.title,
+        startTime,
+        duration: Math.floor((endTime.getTime() - startTime.getTime()) / 60000),
+        description: data.description,
+      }
+    );
+
+    return createMeetingIntegration(result);
+  })();
+
+  // Create enhanced event with additional features
+  const enhancedEvent: EnhancedEvent = {
+    ...updatedEvent,
+    colorCode: data.colorCode ?? null,
+    priority: data.priority ?? "medium",
+    notes: data.notes ?? null,
+    tags: data.tags ?? [],
+    isPrivate: data.isPrivate ?? false,
+    category: data.category ?? null,
+    notifyChanges: data.notifyChanges ?? true,
+    agendaItems: (data.agendaItems ?? []).map((item) => ({
+      title: item.title,
+      duration: item.duration || null,
+      presenter: item.presenter || null,
+      notes: item.notes || null,
+      status: item.status,
+    })),
+    comments: [],
+    attachments,
+    meetingIntegration,
+  };
+
+  // Update Google Calendar if connected
+  if (existingEvent.externalIds?.googleEventId) {
+    try {
+      const googleCalendar = await getGoogleCalendarService();
+      await googleCalendar.updateEvent(
+        existingEvent.externalIds.googleEventId,
+        {
+          title: data.title,
+          description: data.description || null,
+          location: data.location || null,
+          startTime,
+          endTime,
+          isAllDay: data.isAllDay,
+        }
+      );
+    } catch (error) {
+      console.error("Failed to update Google Calendar event:", error);
+    }
+  }
+
+  return enhancedEvent;
+}
+
 export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
   const { userId } = auth();
   if (!userId) throw new Error("Unauthorized");
@@ -345,132 +512,4 @@ export async function deleteCalendarEvent(eventId: string): Promise<boolean> {
   });
 
   return true;
-}
-): Promise<EnhancedEvent> {
-  const { userId } = auth();
-  if (!userId) throw new Error("Unauthorized");
-
-  const user = await prisma.user.findUnique({
-    where: { user_id: userId },
-  });
-
-  if (!user) throw new Error("User not found");
-
-  // Get existing event
-  const existingEvent = await prisma.calendarEvent.findFirst({
-    where: {
-      id: eventId,
-      userId: user.id,
-    },
-    include: {
-      reminders: true,
-    },
-  });
-
-  if (!existingEvent) throw new Error("Event not found");
-
-  const startTime = new Date(data.startDate);
-  const endTime = new Date(data.endDate);
-
-  if (!data.isAllDay) {
-    const [startHours, startMinutes] = (data.startTime || "00:00").split(":");
-    const [endHours, endMinutes] = (data.endTime || "00:00").split(":");
-    startTime.setHours(parseInt(startHours), parseInt(startMinutes));
-    endTime.setHours(parseInt(endHours), parseInt(endMinutes));
-  }
-
-  // Prepare base event data
-  const baseData: EventWithReminders = {
-    ...existingEvent,
-    title: data.title,
-    description: data.description || null,
-    location: data.location || null,
-    startTime,
-    endTime,
-    isAllDay: data.isAllDay,
-  };
-
-  // Prepare enhanced features data
-  const enhancedData: Partial<TempEventData> = {
-    colorCode: data.colorCode ?? null,
-    priority: data.priority ?? ("medium" as EventPriority),
-    notes: data.notes ?? null,
-    tags: data.tags ?? [],
-    isPrivate: data.isPrivate ?? false,
-    category: data.category ?? null,
-    notifyChanges: data.notifyChanges ?? true,
-    agendaItems: data.agendaItems ?? [],
-    comments: [],
-    attachments: [],
-  };
-
-  // Process file uploads
-  if (data.attachments?.length) {
-    enhancedData.attachments = await Promise.all(
-      (data.attachments as EventFormDataAttachment[]).map(async ({ file }) => {
-        if (file instanceof File || "arrayBuffer" in file) {
-          return FileUploadService.uploadFile(file as File, user.id);
-        }
-        return file;
-      })
-    );
-  }
-
-  // Update meeting integration
-  if (data.meetingType && data.meetingType !== "none") {
-    enhancedData.meetingIntegration = await MeetingService.createMeeting(
-      data.meetingType as "google_meet" | "zoom",
-      {
-        title: data.title,
-        startTime,
-        duration: Math.floor((endTime.getTime() - startTime.getTime()) / 60000),
-        description: data.description,
-      }
-    );
-  }
-
-  // Update local event with base data
-  const updatedEvent = await prisma.calendarEvent.update({
-    where: { id: eventId },
-    data: {
-      title: baseData.title,
-      description: baseData.description,
-      location: baseData.location,
-      startTime: baseData.startTime,
-      endTime: baseData.endTime,
-      isAllDay: baseData.isAllDay,
-      status: baseData.status,
-    },
-    include: {
-      reminders: true,
-    },
-  });
-
-  // Create enhanced event
-  const enhancedEvent: EnhancedEvent = {
-    ...updatedEvent,
-    ...enhancedData,
-  };
-
-  // Update Google Calendar if connected
-  if (existingEvent.externalIds?.googleEventId) {
-    try {
-      const googleCalendar = await getGoogleCalendarService();
-      await googleCalendar.updateEvent(
-        existingEvent.externalIds.googleEventId,
-        {
-          title: baseData.title,
-          description: baseData.description,
-          location: baseData.location,
-          startTime: baseData.startTime,
-          endTime: baseData.endTime,
-          isAllDay: baseData.isAllDay,
-        }
-      );
-    } catch (error) {
-      console.error("Failed to update Google Calendar event:", error);
-    }
-  }
-
-  return enhancedEvent;
 }
