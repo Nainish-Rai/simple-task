@@ -1,6 +1,15 @@
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
+// User Create Props type
+export interface userCreateProps {
+  email: string;
+  first_name: string;
+  last_name: string;
+  profile_image_url: string;
+  user_id: string;
+}
+
 // Type for serializable recurrence rule
 export interface RecurrenceRule {
   freq: string;
