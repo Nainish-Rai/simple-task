@@ -205,10 +205,10 @@ export function CalendarView({
   }, []);
 
   return (
-    <Card className="p-6 flex-1">
+    <div className="p-1 flex-1">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-semibold">Calendar</h1>
+          <h1 className="text-3xl font-semibold">Calendar</h1>
           <div className="flex gap-1 dark:bg-background border bg-gray-100 p-1 rounded-lg">
             <Button
               variant={view === "dayGridMonth" ? "default" : "ghost"}
@@ -284,6 +284,60 @@ export function CalendarView({
           weekends={true}
           select={handleDateSelect}
           eventClick={handleEventClick}
+          eventDrop={({ event, revert }) => {
+            const originalEvent = events.find((e) => e.id === event.id);
+            if (!originalEvent) return;
+
+            const start = event.start!;
+            const end = event.end || event.start!;
+
+            // Create updated event data according to EventFormSchema
+            const updatedData: EventFormData = {
+              title: originalEvent.title,
+              description: originalEvent.description || "",
+              location: originalEvent.location || "",
+              startDate: start,
+              endDate: end,
+              startTime: event.allDay
+                ? undefined
+                : `${start.getHours().toString().padStart(2, "0")}:${start
+                    .getMinutes()
+                    .toString()
+                    .padStart(2, "0")}`,
+              endTime: event.allDay
+                ? undefined
+                : `${end.getHours().toString().padStart(2, "0")}:${end
+                    .getMinutes()
+                    .toString()
+                    .padStart(2, "0")}`,
+              isAllDay: event.allDay,
+              meetingType: "none",
+              attachments: [],
+              tags: [],
+              notes: "",
+              agendaItems: [],
+              isPrivate: false,
+              category: null,
+              notifyChanges: true,
+              priority: "medium",
+              colorCode: null,
+            };
+
+            // Update the event in the backend
+            updateEventMutation
+              .mutateAsync({
+                eventId: event.id,
+                data: updatedData,
+              })
+              .then(() => {
+                toast.success("Event updated successfully");
+                router.refresh();
+              })
+              .catch(() => {
+                toast.error("Failed to update event");
+                revert();
+              });
+          }}
           height="auto"
           contentHeight="auto"
           slotMinTime="08:00:00"
@@ -434,6 +488,6 @@ export function CalendarView({
           background: hsl(var(--background));
         }
       `}</style>
-    </Card>
+    </div>
   );
 }

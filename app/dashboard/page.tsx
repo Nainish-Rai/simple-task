@@ -9,10 +9,16 @@ import { useCalendarEvents } from "@/utils/hook/useCalendar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
 import { CalendarEventType } from "@/utils/types";
+import { useUser } from "@clerk/nextjs";
+import { useAnimationFrame } from "framer-motion";
+import { Badge } from "@/components/ui/badge";
 
 export default function Dashboard() {
   const [isGoogleCalendarConnected, setIsGoogleCalendarConnected] =
     useState(false);
+
+  // Get user details
+  const { user } = useUser();
 
   // Get today's events
   const today = new Date();
@@ -93,19 +99,22 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <h1 className="text-xl ">
+          Welcome{" "}
+          <span className="text-muted-foreground">{user?.firstName}</span>{" "}
+        </h1>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Today's Events */}
-        <Card className="p-4">
-          <h2 className="font-semibold mb-2">Today&apos;s Events</h2>
+        <div className="">
+          <h2 className="font-semibold text-3xl mb-2">Today You Have</h2>
           {renderEventList(todayEvents, todayLoading)}
-        </Card>
+        </div>
 
         {/* Upcoming Events */}
-        <Card className="p-4">
-          <h2 className="font-semibold mb-2">Upcoming Events</h2>
+        <div className="">
+          <h2 className="font-semibold text-3xl mb-2">Upcoming Events</h2>
           {upcomingLoading ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-3/4" />
@@ -142,16 +151,16 @@ export default function Dashboard() {
               )}
             </>
           )}
-        </Card>
+        </div>
 
         {/* Calendar Integrations */}
-        <Card className="p-4">
-          <h2 className="font-semibold mb-2">Calendar Integrations</h2>
+        <div className="">
+          <h2 className="font-semibold text-3xl mb-2">Calendar Integrations</h2>
           {isGoogleCalendarConnected ? (
-            <div>
-              <p className="text-sm text-green-600 mb-2">
+            <div className=" flex flex-col max-w-64 w-full">
+              <Badge className="text-sm  font-normal bg-green-400 dark:bg-green-800/50 border-green-400/20 text-green-500 mb-2">
                 ✓ Google Calendar connected
-              </p>
+              </Badge>
               <Button size="sm" variant="outline" asChild>
                 <Link href="/dashboard/settings">Manage Integrations</Link>
               </Button>
@@ -169,26 +178,19 @@ export default function Dashboard() {
               </Button>
             </>
           )}
-        </Card>
+        </div>
       </div>
 
       {/* Calendar Widget */}
-      <div className="mt-4">
-        <Card className="p-4">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="font-semibold">Calendar</h2>
-            <Button variant="outline" asChild>
-              <Link href="/dashboard/calendar">View Full Calendar</Link>
-            </Button>
+      <div className="">
+        <div className="flex justify-between items-center mb-4"></div>
+        {monthLoading ? (
+          <div className="h-[400px] flex items-center justify-center">
+            <Skeleton className="h-full w-full" />
           </div>
-          {monthLoading ? (
-            <div className="h-[400px] flex items-center justify-center">
-              <Skeleton className="h-full w-full" />
-            </div>
-          ) : (
-            <CalendarView events={monthEvents} />
-          )}
-        </Card>
+        ) : (
+          <CalendarView events={monthEvents} />
+        )}
       </div>
     </div>
   );
