@@ -9,9 +9,16 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const ip = req.ip ?? "127.0.0.1";
+  // Get IP from X-Forwarded-For header or fallback to the remote address
+  const forwardedFor = req.headers.get("x-forwarded-for");
+  const ip = forwardedFor ? forwardedFor.split(",")[0].trim() : "127.0.0.1";
+
   const isLocal = process.env.NODE_ENV === "development";
-  const country = isLocal ? "CA" : req.geo?.country ?? "unknown";
+
+  // Get country from Vercel-specific header or fallback to unknown
+  const country = isLocal
+    ? "CA"
+    : req.headers.get("x-vercel-ip-country") ?? "unknown";
 
   const { success, pending, limit, reset, remaining } =
     await ratelimitConfig.ratelimit.limit(ip, {
