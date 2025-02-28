@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useCalendarEvents } from "@/utils/hook/useCalendar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
-import { CalendarEventType } from "@/utils/types";
+import { CalendarEventData } from "@/utils/types";
 import { useUser } from "@clerk/nextjs";
 import { useAnimationFrame } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +59,7 @@ export default function Dashboard() {
     checkGoogleCalendar();
   }, []);
 
-  const renderEventList = (events: CalendarEventType[], loading: boolean) => {
+  const renderEventList = (events: CalendarEventData[], loading: boolean) => {
     if (loading) {
       return (
         <div className="space-y-2">

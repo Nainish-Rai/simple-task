@@ -53,7 +53,7 @@ Implementing enhanced event features with multimedia support, notes, and advance
 
 ## Recent Decisions
 
-- Use S3 or similar for file storage
+- Use Appwrite Cloud for file storage and management
 - Implement WebSocket for real-time features
 - Add markdown support using react-markdown
 - Integrate with Google Meet and Zoom APIs

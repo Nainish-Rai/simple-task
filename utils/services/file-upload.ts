@@ -1,20 +1,21 @@
-import {
-  S3Client,
-  PutObjectCommand,
-  DeleteObjectCommand,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import crypto from "crypto";
+import { Account, Client, Storage, ID } from "appwrite";
+import { Attachment } from "@prisma/client";
 
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION!,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
+if (!process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
+  throw new Error("NEXT_PUBLIC_APPWRITE_ENDPOINT is not defined");
+if (!process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID)
+  throw new Error("NEXT_PUBLIC_APPWRITE_PROJECT_ID is not defined");
+if (!process.env.NEXT_PUBLIC_APPWRITE_STORAGE_BUCKET)
+  throw new Error("NEXT_PUBLIC_APPWRITE_STORAGE_BUCKET is not defined");
 
-const BUCKET_NAME = process.env.S3_BUCKET_NAME!;
+const client = new Client();
+client
+  .setEndpoint(process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT)
+  .setProject(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID);
+
+const storage = new Storage(client);
+
+const BUCKET_ID = process.env.NEXT_PUBLIC_APPWRITE_STORAGE_BUCKET;
 const ALLOWED_FILE_TYPES = [
   "image/jpeg",
   "image/png",
@@ -41,77 +42,45 @@ export class FileUploadService {
     }
   }
 
-  static generateFileName(originalName: string): string {
-    const timestamp = Date.now();
-    const randomString = crypto.randomBytes(16).toString("hex");
-    const extension = originalName.split(".").pop();
-    return `${timestamp}-${randomString}.${extension}`;
-  }
-
-  static async uploadFile(
-    file: File,
-    userId: string
-  ): Promise<{
-    fileName: string;
-    fileSize: number;
-    fileType: string;
-    url: string;
-    uploadedAt: Date;
-  }> {
+  static async uploadFile(file: File, userId: string): Promise<Attachment> {
     await this.validateFile(file);
 
-    const fileName = this.generateFileName(file.name);
-    const key = `uploads/${userId}/${fileName}`;
+    try {
+      // Upload file to Appwrite storage
+      const fileId = ID.unique();
+      const result = await storage.createFile(BUCKET_ID, fileId, file);
 
-    const uploadCommand = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-      ContentType: file.type,
-      Body: new Uint8Array(await file.arrayBuffer()),
-      Metadata: {
-        userId,
-        originalName: file.name,
-      },
-    });
+      // Get file view URL
+      const url = storage.getFileView(BUCKET_ID, result.$id);
 
-    await s3Client.send(uploadCommand);
-
-    // Generate a signed URL that expires in 7 days
-    const url = await getSignedUrl(
-      s3Client,
-      new PutObjectCommand({ Bucket: BUCKET_NAME, Key: key }),
-      { expiresIn: 604800 } // 7 days
-    );
-
-    return {
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type,
-      url,
-      uploadedAt: new Date(),
-    };
+      return {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        url,
+        uploadedAt: new Date(),
+      };
+    } catch (error) {
+      console.error("File upload error:", error);
+      throw new Error("Failed to upload file");
+    }
   }
 
-  static async deleteFile(key: string): Promise<void> {
-    const deleteCommand = new DeleteObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-    });
-
-    await s3Client.send(deleteCommand);
+  static async deleteFile(fileId: string): Promise<void> {
+    try {
+      await storage.deleteFile(BUCKET_ID, fileId);
+    } catch (error) {
+      console.error("File deletion error:", error);
+      throw new Error("Failed to delete file");
+    }
   }
 
-  static async getSignedUrl(key: string): Promise<string> {
-    const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-    });
-
-    return getSignedUrl(s3Client, command, { expiresIn: 604800 }); // 7 days
+  static getFileUrl(fileId: string): string {
+    return storage.getFileView(BUCKET_ID, fileId);
   }
 
-  static extractKeyFromUrl(url: string): string {
-    const urlObj = new URL(url);
-    return urlObj.pathname.slice(1); // Remove leading slash
+  static extractFileIdFromUrl(url: string): string {
+    const segments = url.split("/");
+    return segments[segments.length - 1];
   }
 }

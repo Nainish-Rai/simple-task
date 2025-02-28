@@ -1,85 +1,66 @@
-import { CalendarEventWithIncludes } from "./prisma-types";
-import {
-  MeetingIntegration,
-  Attachment,
-  EnhancedEventFeatures,
-  EventPriority,
-  Reminder,
-} from "./types";
-
-// Temporary types for handling enhanced features before schema update
-export type TempEventData = {
-  meetingIntegration?: MeetingIntegration | null;
-  attachments?: Attachment[];
-  agendaItems?: any[];
-  comments?: any[];
-  tags?: string[];
-  colorCode?: string | null;
-  priority?: EventPriority | null;
-  notes?: string | null;
-  isPrivate?: boolean;
-  category?: string | null;
-  notifyChanges?: boolean;
-};
+import { Attachment, reminder } from "@prisma/client";
 
 export type EventWithReminders = {
+  id: string;
+  userId: string;
+  title: string;
+  description: string | null;
+  startTime: Date;
+  endTime: Date;
+  location: string | null;
+  isAllDay: boolean;
+  status: string;
+  externalIds: {
+    googleEventId?: string;
+    outlookEventId?: string;
+    calendarId?: string;
+    calendarName?: string;
+  } | null;
+  attendees: { email: string; name?: string; response?: string }[];
   reminders: Reminder[];
-} & CalendarEventWithIncludes;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
-export type EnhancedEvent = EventWithReminders & Partial<TempEventData>;
+export type TempEventData = {
+  title: string;
+  description?: string;
+  location?: string;
+  startTime: Date;
+  endTime: Date;
+  isAllDay: boolean;
+  enableMeet?: boolean;
+  attendees?: string[];
+};
 
-// Helper function to safely access enhanced features
-export function getEnhancedFeatures(
-  event: CalendarEventWithIncludes & Partial<TempEventData>
-): Partial<EnhancedEventFeatures> {
-  return {
-    meetingIntegration: event.meetingIntegration || null,
-    attachments: event.attachments || [],
-    agendaItems: event.agendaItems || [],
-    comments: event.comments || [],
-    tags: event.tags || [],
-    colorCode: event.colorCode || null,
-    priority: event.priority || null,
-    notes: event.notes || null,
-    isPrivate: event.isPrivate || false,
-    category: event.category || null,
-    notifyChanges: event.notifyChanges ?? true,
-  };
-}
-
-// Helper function to strip enhanced features when saving to current schema
-export function stripEnhancedFeatures<T extends object>(
-  data: T
-): Omit<T, keyof EnhancedEventFeatures> {
-  const enhancedKeys: (keyof EnhancedEventFeatures)[] = [
-    "meetingIntegration",
-    "attachments",
-    "agendaItems",
-    "comments",
-    "tags",
-    "colorCode",
-    "priority",
-    "notes",
-    "isPrivate",
-    "category",
-    "notifyChanges",
-  ];
-
-  const result = { ...data };
-  enhancedKeys.forEach((key) => delete result[key as keyof typeof result]);
-  return result;
-}
-
-// Type guard for checking if event has enhanced features
-export function hasEnhancedFeatures(
-  event: any
-): event is CalendarEventWithIncludes & Required<TempEventData> {
-  return (
-    event.meetingIntegration !== undefined ||
-    event.attachments !== undefined ||
-    event.agendaItems !== undefined ||
-    event.comments !== undefined ||
-    event.tags !== undefined ||
-    event.priority !== undefined
-  );
-}
+export type EnhancedEvent = EventWithReminders & {
+  colorCode: string | null;
+  priority: "low" | "medium" | "high";
+  meetingIntegration: {
+    provider: string;
+    meetingUrl: string;
+    meetingId?: string | null;
+    password?: string | null;
+    settings?: Record<string, any>;
+  } | null;
+  attachments: Attachment[];
+  notes: string | null;
+  agendaItems: {
+    title: string;
+    duration: number | null;
+    presenter: string | null;
+    notes: string | null;
+    status: "pending" | "completed";
+  }[];
+  comments: {
+    id: string;
+    userId: string;
+    content: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }[];
+  tags: string[];
+  isPrivate: boolean;
+  category: string | null;
+  notifyChanges: boolean;
+};

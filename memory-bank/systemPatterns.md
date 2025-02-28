@@ -91,11 +91,12 @@ sequenceDiagram
 
 ### 6. File Management
 
-- Chunked upload pattern
-- Progressive loading for attachments
-- Lazy loading for media content
-- Caching strategies for frequently accessed files
-- Automatic file type detection and validation
+- Appwrite Storage integration
+- Built-in image optimization
+- File permission management
+- Automatic file processing
+- Storage bucket organization
+- Direct file upload with Appwrite SDK
 
 ### 7. Error Handling
 

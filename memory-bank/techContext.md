@@ -18,7 +18,7 @@
 - Prisma ORM
 - MongoDB
 - Socket.io for real-time features
-- AWS S3 (for file storage)
+- Appwrite (for file storage and management)
 
 ### Authentication & Integration
 
@@ -30,7 +30,7 @@
 
 ### File Management
 
-- AWS SDK for S3
+- Appwrite Storage SDK
 - Sharp for image processing
 - react-dropzone for file uploads
 - react-markdown for note rendering
@@ -50,7 +50,7 @@ Node.js 18+
 npm or yarn
 MongoDB
 Redis (for real-time features)
-AWS Account (for S3)
+Appwrite Account
 ```
 
 ### Environment Variables
@@ -61,11 +61,11 @@ MONGODB_URI=
 NEXTAUTH_SECRET=
 NEXTAUTH_URL=
 
-# Storage
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-AWS_REGION=
-S3_BUCKET_NAME=
+# Appwrite
+APPWRITE_ENDPOINT=
+APPWRITE_PROJECT_ID=
+APPWRITE_API_KEY=
+APPWRITE_STORAGE_BUCKET=
 
 # Calendar Integration
 GOOGLE_CLIENT_ID=
@@ -160,7 +160,7 @@ SOCKET_SERVER_URL=
 
 - Vercel for Next.js
 - MongoDB Atlas
-- AWS S3 for storage
+- Appwrite Cloud for storage
 - Redis Cloud for real-time
 
 ### CI/CD

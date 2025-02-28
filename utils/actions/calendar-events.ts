@@ -2,17 +2,8 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/mongodb";
-import {
-  CalendarEventSchema,
-  EventFormData,
-  CalendarEventType,
-  GoogleCalendarEvent,
-  UploadedFile,
-  EventFormDataAttachment,
-  EventPriority,
-  Reminder,
-  MeetingIntegration,
-} from "../types";
+import { EventFormData, EventFormDataAttachment } from "../types";
+import type { Attachment } from "@prisma/client";
 import {
   EventWithReminders,
   EnhancedEvent,
@@ -280,16 +271,15 @@ export async function createCalendarEvent(
   });
 
   // Process file uploads if any
+  // Process file uploads if any
   const attachments = data.attachments?.length
     ? await Promise.all(
-        (data.attachments as EventFormDataAttachment[]).map(
-          async ({ file }) => {
-            if (file instanceof File || "arrayBuffer" in file) {
-              return FileUploadService.uploadFile(file as File, user.id);
-            }
-            return file;
+        data.attachments.map(async (attachment) => {
+          if ("file" in attachment && attachment.file instanceof File) {
+            return FileUploadService.uploadFile(attachment.file, user.id);
           }
-        )
+          return attachment;
+        })
       )
     : [];
 

@@ -37,8 +37,15 @@ import {
 import { cn } from "@/utils/cn";
 import { format } from "date-fns";
 import { CalendarIcon, Loader2, Plus, X } from "lucide-react";
-import { EventFormData, EventFormSchema } from "@/utils/types";
+import {
+  EventFormData,
+  EventFormDataAttachment,
+  EventFormSchema,
+} from "@/utils/types";
 import { Badge } from "@/components/ui/badge";
+import { FileUpload } from "@/components/ui/file-upload";
+import { FileUploadService } from "@/utils/services/file-upload";
+import { useUser } from "@clerk/nextjs";
 import { z } from "zod";
 
 interface EventFormProps {
@@ -114,8 +121,12 @@ export function EventForm({
   );
   const [currentTag, setCurrentTag] = React.useState<string>("");
   const [currentEmail, setCurrentEmail] = React.useState<string>("");
+  const { user } = useUser();
   const [attendees, setAttendees] = React.useState<string[]>(
     form.getValues("attendees") ?? []
+  );
+  const [attachments, setAttachments] = React.useState<Attachment[]>(
+    form.getValues("attachments") ?? []
   );
 
   const handleAddAttendee = React.useCallback(
@@ -210,6 +221,61 @@ export function EventForm({
         form.setValue("tags", newTags);
         return newTags;
       });
+    },
+    [form]
+  );
+
+  const handleFileUpload = React.useCallback(
+    async (file: File) => {
+      if (!user?.id) return;
+
+      try {
+        // Create a temporary attachment with the file
+        const tempAttachment: EventFormDataAttachment = {
+          file,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+        };
+
+        setAttachments((prevAttachments) => {
+          const newAttachments = [...prevAttachments, tempAttachment];
+          form.setValue("attachments", newAttachments);
+          return newAttachments;
+        });
+      } catch (error) {
+        console.error("Error handling file:", error);
+        throw error;
+      }
+    },
+    [form, user?.id]
+  );
+
+  const handleFileRemove = React.useCallback(
+    async (fileUrl: string) => {
+      try {
+        setAttachments((prevAttachments) => {
+          const newAttachments = prevAttachments.filter((attachment) => {
+            // For uploaded files, check URL
+            if ("url" in attachment) {
+              if (attachment.url === fileUrl) {
+                // Delete from storage if it's an uploaded file
+                const fileId = FileUploadService.extractFileIdFromUrl(fileUrl);
+                FileUploadService.deleteFile(fileId).catch(console.error);
+                return false;
+              }
+              return true;
+            }
+            // For temporary files, check fileName
+            return (attachment as EventFormDataAttachment).fileName !== fileUrl;
+          });
+          form.setValue("attachments", newAttachments);
+          return newAttachments;
+        });
+      } catch (error) {
+        console.error("Error removing file:", error);
+        throw error;
+      }
     },
     [form]
   );
@@ -570,6 +636,29 @@ export function EventForm({
                       </FormItem>
                     )}
                   />
+
+                  <div className="space-y-4">
+                    <FormLabel>File Attachments</FormLabel>
+                    <FileUpload
+                      onFileUpload={handleFileUpload}
+                      onFileRemove={handleFileRemove}
+                      files={attachments}
+                      maxFiles={10}
+                      className="w-full"
+                      accept={{
+                        "image/*": [".jpeg", ".jpg", ".png", ".gif", ".webp"],
+                        "application/pdf": [".pdf"],
+                        "application/msword": [".doc"],
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                          [".docx"],
+                        "application/vnd.ms-excel": [".xls"],
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                          [".xlsx"],
+                        "video/mp4": [".mp4"],
+                        "audio/mpeg": [".mp3"],
+                      }}
+                    />
+                  </div>
 
                   <div className="space-y-4">
                     <FormLabel>Tags</FormLabel>
