@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo, useCallback } from "react";
+import { useState, useRef, useMemo, useCallback, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -17,6 +17,7 @@ import {
   useCreateEvent,
   useUpdateEvent,
   useDeleteEvent,
+  useCalendarEvents,
 } from "@/utils/hook/useCalendar";
 
 // Colors cache to prevent recalculation
@@ -46,19 +47,24 @@ const generatePastelColor = (str: string) => {
   return colors;
 };
 
-interface CalendarViewProps {
-  events: CalendarEventData[];
-  isLoading?: boolean;
-}
+interface CalendarViewProps {}
 
-export function CalendarView({
-  events = [],
-  isLoading = false,
-}: CalendarViewProps) {
+export function CalendarView({}: CalendarViewProps) {
   const [view, setView] = useState<
     "dayGridMonth" | "timeGridWeek" | "timeGridDay"
   >("dayGridMonth");
   const [currentViewTitle, setCurrentViewTitle] = useState<string>("");
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(() => {
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    return { start, end };
+  });
+
+  const { data: events = [], isLoading } = useCalendarEvents(
+    dateRange.start,
+    dateRange.end
+  );
 
   const calendarRef = useRef<FullCalendar | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -393,6 +399,10 @@ export function CalendarView({
                 | "timeGridDay"
             );
             setCurrentViewTitle(dateInfo.view.title);
+            setDateRange({
+              start: dateInfo.start,
+              end: dateInfo.end,
+            });
           }}
           eventContent={renderEventContent}
         />

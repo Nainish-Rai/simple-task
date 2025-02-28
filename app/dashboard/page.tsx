@@ -184,13 +184,7 @@ export default function Dashboard() {
       {/* Calendar Widget */}
       <div className="">
         <div className="flex justify-between items-center mb-4"></div>
-        {monthLoading ? (
-          <div className="h-[400px] flex items-center justify-center">
-            <Skeleton className="h-full w-full" />
-          </div>
-        ) : (
-          <CalendarView events={monthEvents} />
-        )}
+        <CalendarView />
       </div>
     </div>
   );
