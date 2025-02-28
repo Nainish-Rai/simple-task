@@ -12,7 +12,7 @@ import { EventDialog } from "./event-dialog";
 import { DateSelectArg, EventClickArg } from "@fullcalendar/core";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CalendarEventType, EventFormData } from "@/utils/types";
+import { CalendarEventData, EventFormData } from "@/utils/types";
 import {
   useCreateEvent,
   useUpdateEvent,
@@ -47,7 +47,7 @@ const generatePastelColor = (str: string) => {
 };
 
 interface CalendarViewProps {
-  events: CalendarEventType[];
+  events: CalendarEventData[];
   isLoading?: boolean;
 }
 
@@ -58,11 +58,12 @@ export function CalendarView({
   const [view, setView] = useState<
     "dayGridMonth" | "timeGridWeek" | "timeGridDay"
   >("dayGridMonth");
+  const [currentViewTitle, setCurrentViewTitle] = useState<string>("");
 
   const calendarRef = useRef<FullCalendar | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEventType | null>(
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEventData | null>(
     null
   );
   const [selectedDates, setSelectedDates] = useState<{
@@ -206,55 +207,85 @@ export function CalendarView({
 
   return (
     <div className="p-1 flex-1">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-4">
+      <header className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-6">
           <h1 className="text-3xl font-semibold">Calendar</h1>
-          <div className="flex gap-1 dark:bg-background border bg-gray-100 p-1 rounded-lg">
-            <Button
-              variant={view === "dayGridMonth" ? "default" : "ghost"}
-              size="sm"
-              className={
-                view === "dayGridMonth"
-                  ? "bg-white/90 shadow-sm"
-                  : "hover:bg-white/50"
-              }
-              onClick={() => {
-                calendarRef.current?.getApi().changeView("dayGridMonth");
-                setView("dayGridMonth");
-              }}
-            >
-              Month
-            </Button>
-            <Button
-              variant={view === "timeGridWeek" ? "default" : "ghost"}
-              size="sm"
-              className={
-                view === "timeGridWeek"
-                  ? "bg-white shadow-sm"
-                  : "hover:bg-white/50"
-              }
-              onClick={() => {
-                calendarRef.current?.getApi().changeView("timeGridWeek");
-                setView("timeGridWeek");
-              }}
-            >
-              Week
-            </Button>
-            <Button
-              variant={view === "timeGridDay" ? "default" : "ghost"}
-              size="sm"
-              className={
-                view === "timeGridDay"
-                  ? "bg-white shadow-sm"
-                  : "hover:bg-white/50"
-              }
-              onClick={() => {
-                calendarRef.current?.getApi().changeView("timeGridDay");
-                setView("timeGridDay");
-              }}
-            >
-              Day
-            </Button>
+          <div className="flex items-center gap-6">
+            {/* Navigation Controls */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => calendarRef.current?.getApi().prev()}
+              >
+                ←
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => calendarRef.current?.getApi().today()}
+              >
+                Today
+              </Button>
+              <span className="text-sm font-medium min-w-[150px] text-center">
+                {currentViewTitle}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => calendarRef.current?.getApi().next()}
+              >
+                →
+              </Button>
+            </div>
+            {/* View Toggle Buttons */}
+            <div className="flex gap-1 dark:bg-background border bg-gray-100 p-1 rounded-lg">
+              <Button
+                variant={view === "dayGridMonth" ? "default" : "ghost"}
+                size="sm"
+                className={
+                  view === "dayGridMonth"
+                    ? "bg-white/90 shadow-sm"
+                    : "hover:bg-white/50"
+                }
+                onClick={() => {
+                  calendarRef.current?.getApi().changeView("dayGridMonth");
+                  setView("dayGridMonth");
+                }}
+              >
+                Month
+              </Button>
+              <Button
+                variant={view === "timeGridWeek" ? "default" : "ghost"}
+                size="sm"
+                className={
+                  view === "timeGridWeek"
+                    ? "bg-white shadow-sm"
+                    : "hover:bg-white/50"
+                }
+                onClick={() => {
+                  calendarRef.current?.getApi().changeView("timeGridWeek");
+                  setView("timeGridWeek");
+                }}
+              >
+                Week
+              </Button>
+              <Button
+                variant={view === "timeGridDay" ? "default" : "ghost"}
+                size="sm"
+                className={
+                  view === "timeGridDay"
+                    ? "bg-white shadow-sm"
+                    : "hover:bg-white/50"
+                }
+                onClick={() => {
+                  calendarRef.current?.getApi().changeView("timeGridDay");
+                  setView("timeGridDay");
+                }}
+              >
+                Day
+              </Button>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -268,7 +299,7 @@ export function CalendarView({
             Create event
           </Button>
         </div>
-      </div>
+      </header>
 
       <div className="mt-4 fc-theme-shadcn">
         <FullCalendar
@@ -299,13 +330,13 @@ export function CalendarView({
               startDate: start,
               endDate: end,
               startTime: event.allDay
-                ? undefined
+                ? "00:00"
                 : `${start.getHours().toString().padStart(2, "0")}:${start
                     .getMinutes()
                     .toString()
                     .padStart(2, "0")}`,
               endTime: event.allDay
-                ? undefined
+                ? "23:59"
                 : `${end.getHours().toString().padStart(2, "0")}:${end
                     .getMinutes()
                     .toString()
@@ -317,10 +348,10 @@ export function CalendarView({
               notes: "",
               agendaItems: [],
               isPrivate: false,
-              category: null,
+              category: "",
               notifyChanges: true,
               priority: "medium",
-              colorCode: null,
+              colorCode: "",
             };
 
             // Update the event in the backend
@@ -361,6 +392,7 @@ export function CalendarView({
                 | "timeGridWeek"
                 | "timeGridDay"
             );
+            setCurrentViewTitle(dateInfo.view.title);
           }}
           eventContent={renderEventContent}
         />
